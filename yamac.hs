@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XFlexibleInstances -fno-warn-missing-methods #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods #-}
 
 import qualified Data.ByteString.Lazy as B
 import Control.Monad.Reader
@@ -10,7 +10,9 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as Token
 import Text.ParserCombinators.Parsec.Language (javaStyle)
 
-data Instrument = Sample String
+-- abstract tree representation of parsed music file
+
+data Instrument = Sample { samplePath :: String }
      deriving Show
 
 data Command = BPM Int                   -- bit = quarter-notes
@@ -160,13 +162,14 @@ instance Binary Instruction where
   put DecCtrBr    = put (opcode 1 4)
   put Halt        = putWord8 255
 
-instance Binary [Instruction] where
-  put l = mapM_ put l
-
 type Environment = [(String, Instrument)]
 
-compileChannel :: [Command] -> [(String, Instrument)] -> [Instruction]
-compileChannel l ctx = concat $ map (\e -> runReader (toInsn e) ctx) l
+compileChannels m =
+  map (compileChannel (instruments m) . snd) (channels m)
+
+compileChannel :: Environment -> [Command] -> [Instruction]
+compileChannel ctx cs = concatMap translate cs
+  where translate c = runReader (toInsn c) ctx
 
 toInsn :: Command -> Reader Environment ([Instruction])
 toInsn (BPM n) =
@@ -181,7 +184,7 @@ toInsn (Select s) = do
 toInsn (Loop n cs) = do
   ctx <- ask
   return ([PushI CtrR, PushI BrR, LoadI (fromInteger n) CtrR, LoadBr]
-          ++ compileChannel cs ctx ++ [DecCtrBr, PopI BrR, PopI CtrR])
+          ++ compileChannel ctx cs ++ [DecCtrBr, PopI BrR, PopI CtrR])
 toInsn (Pitch (Just _) _) =
   return [LoadI 0 PitchR]
 toInsn (Pitch Nothing _) =
@@ -198,33 +201,52 @@ lookupIndex e l = findIndex' e l 0
             else findIndex' e xs (i + 1)
         findIndex' e [] i = Nothing
 
-data Audio = Audio { frameRate :: Word16,
-                     frames    :: Word32,
-                     samples   :: [Word8] }
+-- binary representation
+
+newtype Stream a = Stream { unstream :: [a] }
+        deriving Show
+
+instance Binary a => Binary (Stream a) where
+  put (Stream l) = mapM_ put l
+
+data Sound = Sound { soundFrameRate :: Word16,
+                     soundFrames    :: Word32,
+                     soundSamples   :: [Word8] }
      deriving Show
 
-instance Binary Audio where
-  put audio = do
-    put (frameRate audio)
-    put (frames audio)
-    mapM_ put (samples audio)
+instance Binary Sound where
+  put sound = do
+    put (soundFrameRate sound)
+    put (soundFrames sound)
+    mapM_ put (soundSamples sound)
 
-extractAudio :: WAVE -> Audio
-extractAudio wave = Audio audioFrameRate audioFrames (map extract audioSamples)
+data MusicRaw = MusicRaw { tracks :: [Stream Instruction],
+                           sounds :: [Sound] }
+     deriving Show
+
+instance Binary MusicRaw where
+  put music = do
+    mapM_ put (tracks music)
+    mapM_ put (sounds music)
+
+extractSound :: WAVE -> Sound
+extractSound wave = Sound frameRate frames (map extract samples)
   where header = waveHeader wave
-        audioSamples = map head (waveSamples wave)
-        audioFrameRate = fromIntegral $ waveFrameRate header
-        audioFrames = case waveFrames header of
-                           Just n -> fromIntegral n
-                           Nothing -> error "Unknown frame number!"
+        samples = map head (waveSamples wave)
+        frameRate = fromIntegral $ waveFrameRate header
+        frames = case waveFrames header of
+                      Just n -> fromIntegral n
+                      Nothing -> error "Unknown frame number!"
         extract s = fromIntegral $ s `shiftR` 24
 
-getSampleFile i = case snd i of
-                       Sample filename -> filename
+readSoundFiles :: Music -> IO [Sound]
+readSoundFiles m = do
+  samples <- mapM (getWAVEFile . samplePath . snd) (instruments m)
+  return $ map extractSound samples
 
-compile m = do
-  samples <- mapM (getWAVEFile . getSampleFile) (instruments m)
-  print $ map extractAudio samples
+assemble m = do
+  ss <- readSoundFiles m
+  return $ MusicRaw (map Stream $ compileChannels m) ss
 
 -- main part
 
@@ -234,5 +256,6 @@ main = do
     Left e -> do putStrLn "Error parsing input:"
                  print e
     Right m -> do print m
-                  compile m
-                  --B.writeFile "test.bin" (B.pack $ compile c)
+                  raw <- assemble m
+                  print raw
+                  encodeFile "test.bin" raw

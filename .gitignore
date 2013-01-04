@@ -6,5 +6,7 @@ cabal-dev
 *.chs.h
 *.wav
 *.bin
+*.swp
 *~
+yamac
 .virthualenv
