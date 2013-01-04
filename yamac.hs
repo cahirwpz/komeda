@@ -1,16 +1,14 @@
-{-# OPTIONS_GHC -XFlexibleInstances #-}
+{-# OPTIONS_GHC -XFlexibleInstances -fno-warn-missing-methods #-}
 
 import qualified Data.ByteString.Lazy as B
 import Control.Monad.Reader
 import Data.WAVE
 import Data.Word
 import Data.Bits
+import Data.Binary
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as Token
 import Text.ParserCombinators.Parsec.Language (javaStyle)
-
-class Serializable a where
-  serialize :: a -> [Word8]
 
 data Instrument = Sample String
      deriving Show
@@ -146,21 +144,24 @@ data Instruction = LoadI Word8 Register
                  | Halt
      deriving Show
 
+opcode :: Word8 -> Word8 -> Word8
 opcode a b = (a `shiftL` 4) .|. b
+
+regnum :: Register -> Word8
 regnum = fromIntegral . fromEnum
 
-instance Serializable Instruction where
-  serialize (LoadI n r) = [opcode (regnum r) 0, n]
-  serialize (PushI r)   = [opcode (regnum r) 1]
-  serialize (PopI r)    = [opcode (regnum r) 2]
-  serialize (PlayI n)   = [opcode 0 3, n]
-  serialize (WaitI n)   = [opcode 1 3, n]
-  serialize LoadBr      = [opcode 0 4]
-  serialize DecCtrBr    = [opcode 1 4]
-  serialize Halt        = [255]
+instance Binary Instruction where
+  put (LoadI n r) = put (opcode (regnum r) 0) >> put n
+  put (PushI r)   = put (opcode (regnum r) 1)
+  put (PopI r)    = put (opcode (regnum r) 2)
+  put (PlayI n)   = put (opcode 0 3) >> put n
+  put (WaitI n)   = put (opcode 1 3) >> put n
+  put LoadBr      = put (opcode 0 4)
+  put DecCtrBr    = put (opcode 1 4)
+  put Halt        = putWord8 255
 
-instance Serializable [Instruction] where
-  serialize l = concat $ map serialize l
+instance Binary [Instruction] where
+  put l = mapM_ put l
 
 type Environment = [(String, Instrument)]
 
@@ -201,6 +202,12 @@ data Audio = Audio { frameRate :: Word16,
                      frames    :: Word32,
                      samples   :: [Word8] }
      deriving Show
+
+instance Binary Audio where
+  put audio = do
+    put (frameRate audio)
+    put (frames audio)
+    mapM_ put (samples audio)
 
 extractAudio :: WAVE -> Audio
 extractAudio wave = Audio audioFrameRate audioFrames (map extract audioSamples)
