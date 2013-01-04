@@ -9,4 +9,5 @@ cabal-dev
 *.swp
 *~
 yamac
+yamaplay
 .virthualenv
