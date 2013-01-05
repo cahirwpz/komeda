@@ -209,15 +209,15 @@ newtype Stream a = Stream { unstream :: [a] }
 instance Binary a => Binary (Stream a) where
   put (Stream l) = mapM_ put l
 
-data Sound = Sound { soundFrameRate :: Word16,
-                     soundFrames    :: Word32,
+data Sound = Sound { soundFrames    :: Word32,
+                     soundFrameRate :: Word16,
                      soundSamples   :: [Word8] }
      deriving Show
 
 instance Binary Sound where
   put sound = do
-    put (soundFrameRate sound)
     put (soundFrames sound)
+    put (soundFrameRate sound)
     mapM_ put (soundSamples sound)
 
 data MusicRaw = MusicRaw { tracks :: [Stream Instruction],
@@ -225,9 +225,20 @@ data MusicRaw = MusicRaw { tracks :: [Stream Instruction],
      deriving Show
 
 instance Binary MusicRaw where
-  put music = do
-    mapM_ put (tracks music)
-    mapM_ put (sounds music)
+  put music =
+    let toWord32 n = (fromIntegral n) :: Word32
+        tracksLen = map (toWord32 . B.length . encode) (tracks music)
+        soundsLen = map (toWord32 . B.length . encode) (sounds music)
+        headerLen = toWord32 $ (length tracksLen + length soundsLen + 2) * 4
+        tracksOffsets = scanl (+) headerLen tracksLen
+        soundsOffsets = scanl (+) (last tracksOffsets) soundsLen
+        in do
+          mapM_ put (init tracksOffsets)
+          put (0 :: Word32)
+          mapM_ put (init soundsOffsets)
+          put (0 :: Word32)
+          mapM_ put (tracks music)
+          mapM_ put (sounds music)
 
 extractSound :: WAVE -> Sound
 extractSound wave = Sound frameRate frames (map extract samples)
