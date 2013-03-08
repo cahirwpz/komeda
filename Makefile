@@ -1,6 +1,6 @@
-CC	= gcc
-CFLAGS	= -O2 -Wall $(shell sdl-config --cflags)
-LDLIBS	= $(shell sdl-config --libs)
+CC	= gcc -g
+CFLAGS	= -O2 -Wall $(shell pkg-config --cflags portaudio-2.0 samplerate)
+LDLIBS	= $(shell pkg-config --libs portaudio-2.0 samplerate)
 
 all:	yamac yamaplay
 

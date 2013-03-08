@@ -232,16 +232,18 @@ instance Binary MusicRaw where
         headerLen = toWord32 $ (length tracksLen + length soundsLen + 2) * 4
         tracksOffsets = scanl (+) headerLen tracksLen
         soundsOffsets = scanl (+) (last tracksOffsets) soundsLen
+        totalLength = last soundsOffsets
         in do
+          put (totalLength :: Word32)
+          put $ (toWord32 . length . tracks) music
           mapM_ put (init tracksOffsets)
-          put (0 :: Word32)
+          put $ (toWord32 . length . sounds) music
           mapM_ put (init soundsOffsets)
-          put (0 :: Word32)
           mapM_ put (tracks music)
           mapM_ put (sounds music)
 
 extractSound :: WAVE -> Sound
-extractSound wave = Sound frameRate frames (map extract samples)
+extractSound wave = Sound frames frameRate (map extract samples)
   where header = waveHeader wave
         samples = map head (waveSamples wave)
         frameRate = fromIntegral $ waveFrameRate header
