@@ -1,0 +1,43 @@
+Channel 0 {
+  BPM 150 /* in quarter notes */
+  Octave 4
+  Select "brass"
+  Loop 2 {
+    Pitch D 
+    Play 1
+    Pitch B- 
+    Play 1
+    Pitch B- 
+    Play 1
+    Pitch C 
+    Play 1
+    Pitch A- 
+    Play 1
+    Pitch A- 
+    Play 1
+    Pitch G- 
+    Play 1e
+    Pitch B- 
+    Play 1e
+    Pitch D 
+    Play 1h
+    Pitch D 
+    Play 1
+    Pitch B- 
+    Play 1
+    Pitch B- 
+    Play 1
+    Pitch C 
+    Play 1
+    Pitch A- 
+    Play 1
+    Pitch A- 
+    Play 1
+    Pitch G- 
+    Play 1e
+    Pitch B- 
+    Play 1e
+    Pitch G- 
+    Play 1h
+  }
+}
