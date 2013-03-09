@@ -1,11 +1,15 @@
 #include <arpa/inet.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #include "portaudio.h"
 #include "samplerate.h"
-#include "sndfile.h"
+
+#define SAMPLE_RATE 44100
+#define NUM_SECONDS 10
 
 typedef struct File {
   uint32_t length;
@@ -117,6 +121,24 @@ MusicT *LoadYama(const char *path) {
   return music;
 }
 
+static int PlayYamaCallback(const void *inputBuffer,
+                            void *outputBuffer,
+                            unsigned long framesPerBuffer,
+                            const PaStreamCallbackTimeInfo *timeInfo,
+                            PaStreamCallbackFlags statusFlags,
+                            void *userData)
+{
+  float *out = (float*)outputBuffer;
+  size_t i;
+
+  for (i = 0; i < framesPerBuffer; i++) {
+    *out++ = 0.0f;  /* left */
+    *out++ = 0.0f;  /* right */
+  }
+
+  return 0;
+}
+
 void Pa_NoFail(PaError err) {
   if (err != paNoError) {
     fprintf(stderr, "PortAudio error: %s\n", Pa_GetErrorText(err));
@@ -124,13 +146,37 @@ void Pa_NoFail(PaError err) {
   }
 }
 
+static bool ExitRequest = false;
+
+static void SigIntHandler(int signo) {
+  ExitRequest = true;
+  signal(SIGINT, SIG_DFL);
+}
+
 int main(int argc, char *argv[]) {
-  Pa_NoFail(Pa_Initialize());
+  /* print some diagnostic messages */
+  printf("%s\n", Pa_GetVersionText());
 
+  /* set up keyboard break handler */
+  signal(SIGINT, SigIntHandler);
+
+  /* load music file from disk */
   if (argc > 1)
-    LoadYama(argv[1]);
+    LoadYama(argv[1]); 
 
-  Pa_NoFail(Pa_Terminate());
+  {
+    PaStream *stream;
+
+    Pa_NoFail(Pa_Initialize());
+    Pa_NoFail(Pa_OpenDefaultStream(&stream, 0, 2, paFloat32, SAMPLE_RATE, 256,
+                                   PlayYamaCallback, NULL));
+    Pa_NoFail(Pa_StartStream(stream));
+    Pa_Sleep(NUM_SECONDS * 1000);
+    printf("Quitting%s.\n", ExitRequest ? " by user request" : "");
+    Pa_NoFail(Pa_StopStream(stream));
+    Pa_NoFail(Pa_CloseStream(stream));
+    Pa_NoFail(Pa_Terminate());
+  }
 
   return 0;
 }
