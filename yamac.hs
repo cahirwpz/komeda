@@ -3,6 +3,7 @@
 import qualified Data.ByteString.Lazy as B
 import Control.Monad.Reader
 import Data.WAVE
+import Data.Int
 import Data.Word
 import Data.Bits
 import Data.Binary
@@ -207,11 +208,18 @@ newtype Stream a = Stream { unstream :: [a] }
         deriving Show
 
 instance Binary a => Binary (Stream a) where
-  put (Stream l) = mapM_ put l
+  put (Stream l) =
+    let toWord16 n = (fromIntegral n) :: Word16
+        bytesTaken = foldl (+) 0 (map (B.length . encode) l)
+        commands = length l
+        in do
+          put $ toWord16 bytesTaken
+          put $ toWord16 commands
+          mapM_ put l
 
 data Sound = Sound { soundFrames    :: Word32,
                      soundFrameRate :: Word16,
-                     soundSamples   :: [Word8] }
+                     soundSamples   :: [Int8] }
      deriving Show
 
 instance Binary Sound where
@@ -226,21 +234,14 @@ data MusicRaw = MusicRaw { tracks :: [Stream Instruction],
 
 instance Binary MusicRaw where
   put music =
-    let toWord32 n = (fromIntegral n) :: Word32
-        tracksLen = map (toWord32 . B.length . encode) (tracks music)
-        soundsLen = map (toWord32 . B.length . encode) (sounds music)
-        headerLen = toWord32 $ (length tracksLen + length soundsLen + 2) * 4
-        tracksOffsets = scanl (+) headerLen tracksLen
-        soundsOffsets = scanl (+) (last tracksOffsets) soundsLen
-        totalLength = last soundsOffsets
+    let toWord16 n = (fromIntegral n) :: Word16
+        mTracks = tracks music
+        mSounds = sounds music
         in do
-          put (totalLength :: Word32)
-          put $ (toWord32 . length . tracks) music
-          mapM_ put (init tracksOffsets)
-          put $ (toWord32 . length . sounds) music
-          mapM_ put (init soundsOffsets)
-          mapM_ put (tracks music)
-          mapM_ put (sounds music)
+          put $ (toWord16 . length) mTracks
+          mapM_ put mTracks
+          put $ (toWord16 . length) mSounds
+          mapM_ put mSounds
 
 extractSound :: WAVE -> Sound
 extractSound wave = Sound frames frameRate (map extract samples)
@@ -250,7 +251,7 @@ extractSound wave = Sound frames frameRate (map extract samples)
         frames = case waveFrames header of
                       Just n -> fromIntegral n
                       Nothing -> error "Unknown frame number!"
-        extract s = fromIntegral $ s `shiftR` 24
+        extract s = fromIntegral $ s `shiftR` 24 - 128
 
 readSoundFiles :: Music -> IO [Sound]
 readSoundFiles m = do
