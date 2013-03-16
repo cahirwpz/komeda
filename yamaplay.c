@@ -4,42 +4,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <string.h>
 
-#include "portaudio.h"
-#include "samplerate.h"
+#include <portaudio.h>
+#include <samplerate.h>
 
 #define SAMPLE_RATE 44100
 #define NUM_SECONDS 10
 
-typedef struct File {
-  uint32_t length;
-  uint8_t  data[0];
-} FileT;
-
 typedef struct Sound {
-  uint32_t frames;
-  uint16_t frameRate;
-  uint8_t  sample[0];
+  size_t frames;
+  float  *data;
 } SoundT;
 
-typedef struct Track {
-  uint8_t instruction[0];
-} TrackT;
+typedef struct Channel {
+  size_t  commands;
+  uint8_t *data;
 
-typedef struct SoundTable {
-  uint32_t num;
-  SoundT *sound[0];
-} SoundTableT;
+  bool played;
+  int sound;
+  int frameNum;
+} ChannelT;
 
-typedef struct TrackTable {
-  uint32_t num;
-  TrackT *track[0];
-} TrackTableT;
+typedef struct Player {
+  size_t soundNum;
+  size_t channelNum;
 
-typedef struct Music {
-  SoundTableT *sounds;
-  TrackTableT *tracks;
-} MusicT;
+  SoundT   *sound;
+  ChannelT *channel;
+} PlayerT;
 
 typedef enum { InstR, OctR, BpmR, PitchR, VolR, BrR, CtrR } RegNumT;
 
@@ -53,73 +46,108 @@ typedef struct Registers {
   uint8_t  counter;
 } RegistersT;
 
-FileT *LoadFile(const char *path) {
-  FILE *fh = fopen(path, "rb");
-  FileT *file;
-  int32_t length;
+/*
+ * Raw file handling. Byte ordering is big-endian.
+ */
 
-  fread(&length, sizeof(length), 1, fh);
-  length = ntohl(length);
-
-  file = malloc(sizeof(FileT) + length);
-  file->length = length;
-
-  fread(file->data, length, 1, fh);
-  fclose(fh);
-
-  return file;
+int8_t ReadInt8(FILE *file) {
+  int8_t i;
+  fread(&i, sizeof(i), 1, file);
+  return i;
 }
 
-MusicT *LoadYama(const char *path) {
-  FileT *file = LoadFile(path);
-  MusicT *music = malloc(sizeof(MusicT));
+int16_t ReadInt16(FILE *file) {
+  int16_t i;
+  fread(&i, sizeof(i), 1, file);
+  return ntohs(i);
+}
 
-  uint32_t *offsets = (uint32_t *)file->data;
+int32_t ReadInt32(FILE *file) {
+  int32_t i;
+  fread(&i, sizeof(i), 1, file);
+  return ntohl(i);
+}
+
+void ReadBytes(FILE *file, void *data, size_t length) {
+  fread(data, length, 1, file);
+}
+
+/*
+ * Read Yama binary file structures.
+ */
+
+void ReadYamaTracks(FILE *file, PlayerT *player) {
+  ChannelT *channel;
   int i, num;
-  
-  {
-    TrackT **track;
 
-    num = ntohl(*offsets++);
+  player->channelNum = num = ReadInt16(file);
+  player->channel = calloc(num, sizeof(ChannelT));
 
-    music->tracks = malloc(sizeof(TrackTableT) + sizeof(TrackT *) * num);
-    music->tracks->num = num;
+  channel = player->channel;
 
-    track = music->tracks->track;
+  for (i = 0; i < num; i++) {
+    int16_t size = ReadInt16(file);
+    int16_t commands = ReadInt16(file);
 
-    for (i = 0; i < num; i++) {
-      uint32_t offset = ntohl(*offsets++);
+    channel[i].data = malloc(size);
+    channel[i].commands = commands;
+    ReadBytes(file, channel[i].data, size);
 
-      track[i] = (TrackT *)&file->data[offset];
-
-      printf("track %d at %p (offset %d)\n", i, track[i], offset);
-    }
+    printf("Track %d: %zd commands (%d) bytes.\n", i, commands, size);
   }
-
-  {
-    SoundT **sound;
-
-    num = ntohl(*offsets++);
-
-    music->sounds = malloc(sizeof(SoundTableT) + sizeof(SoundT *) * num);
-    music->sounds->num = num;
-
-    sound = music->sounds->sound;
-
-    for (i = 0; i < num; i++) {
-      uint32_t offset = ntohl(*offsets++);
-
-      sound[i] = (SoundT *)&file->data[offset];
-      sound[i]->frames = ntohl(sound[i]->frames);
-      sound[i]->frameRate = ntohs(sound[i]->frameRate);
-
-      printf("instrument %d at %p (offset %d)\n", i, sound[i], offset);
-      printf("%d frames at %dHz\n", sound[i]->frames, sound[i]->frameRate);
-    }
-  }
-
-  return music;
 }
+
+void ReadYamaSounds(FILE *file, PlayerT *player) {
+  SoundT *sound;
+  int i, j, num;
+
+  player->soundNum = num = ReadInt16(file);
+  player->sound = calloc(num, sizeof(SoundT));
+
+  sound = player->sound;
+
+  for (i = 0; i < num; i++) {
+    int32_t frames = ReadInt32(file);
+    int16_t frameRate = ReadInt16(file);
+
+    SRC_DATA resampler;
+
+    resampler.src_ratio = (double)SAMPLE_RATE / (double)frameRate;
+    resampler.input_frames = frames;
+    resampler.output_frames = (int)(resampler.input_frames * resampler.src_ratio);
+    resampler.data_in = malloc(sizeof(float) * resampler.input_frames);
+    resampler.data_out = malloc(sizeof(float) * resampler.output_frames);
+
+    for (j = 0; j < frames; j++)
+      resampler.data_in[j] = (float)ReadInt8(file) / 128;
+
+    (void)src_simple(&resampler, SRC_SINC_BEST_QUALITY, 1);
+
+    free(resampler.data_in);
+
+    sound[i].frames = resampler.output_frames;
+    sound[i].data = resampler.data_out;
+
+    printf("Instrument %d: %zd frames at %dHz (%.3fs)\n", i,
+           sound[i].frames, SAMPLE_RATE,
+           (float)sound[i].frames / (float)SAMPLE_RATE);
+  }
+}
+
+PlayerT *LoadYama(const char *path) {
+  PlayerT *player = malloc(sizeof(PlayerT));
+
+  FILE *file = fopen(path, "rb");
+  ReadYamaTracks(file, player);
+  ReadYamaSounds(file, player);
+  fclose(file);
+
+  return player;
+}
+
+/*
+ * Playback routines.
+ */
 
 static int PlayYamaCallback(const void *inputBuffer,
                             void *outputBuffer,
@@ -128,16 +156,34 @@ static int PlayYamaCallback(const void *inputBuffer,
                             PaStreamCallbackFlags statusFlags,
                             void *userData)
 {
+  PlayerT *player = (PlayerT *)userData;
   float *out = (float*)outputBuffer;
   size_t i;
 
   for (i = 0; i < framesPerBuffer; i++) {
-    *out++ = 0.0f;  /* left */
-    *out++ = 0.0f;  /* right */
+    ChannelT *channel = &player->channel[0];
+    SoundT *sound = &player->sound[0];
+
+    if (channel->played) {
+      int n = (channel->frameNum + i) % sound->frames;
+
+      *out++ = sound->data[n]; /* left */
+      *out++ = sound->data[n]; /* right */
+    } else {
+      *out++ = 0.0f;  /* left */
+      *out++ = 0.0f;  /* right */
+    }
   }
+
+  player->channel[0].frameNum =
+      (player->channel[0].frameNum + framesPerBuffer) % player->sound[0].frames;
 
   return 0;
 }
+
+/*
+ * Main program.
+ */
 
 void Pa_NoFail(PaError err) {
   if (err != paNoError) {
@@ -154,6 +200,8 @@ static void SigIntHandler(int signo) {
 }
 
 int main(int argc, char *argv[]) {
+  PlayerT *player = NULL;
+
   /* print some diagnostic messages */
   printf("%s\n", Pa_GetVersionText());
 
@@ -162,14 +210,16 @@ int main(int argc, char *argv[]) {
 
   /* load music file from disk */
   if (argc > 1)
-    LoadYama(argv[1]); 
+    player = LoadYama(argv[1]); 
 
-  {
+  if (player) {
     PaStream *stream;
+
+    player->channel[0].played = true;
 
     Pa_NoFail(Pa_Initialize());
     Pa_NoFail(Pa_OpenDefaultStream(&stream, 0, 2, paFloat32, SAMPLE_RATE, 256,
-                                   PlayYamaCallback, NULL));
+                                   PlayYamaCallback, (void *)player));
     Pa_NoFail(Pa_StartStream(stream));
     Pa_Sleep(NUM_SECONDS * 1000);
     printf("Quitting%s.\n", ExitRequest ? " by user request" : "");
