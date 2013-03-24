@@ -9,6 +9,10 @@ voice "brass" {
   file "brass.wav"
 }
 
+pattern "foobar" {
+  c d (e f g) b a
+}
+
 channel 0 {
   [tempo 150, unit 1/8, voice "brass"]
   {times 3:
@@ -20,5 +24,5 @@ channel 0 {
 
 channel 1 {
   [tempo 150, unit 1/4, voice "trumpet"]
-  {times 5: b, C D' R}
+  {times 5: b, C {insert "foobar"} D' R}
 }
