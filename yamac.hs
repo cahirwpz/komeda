@@ -13,6 +13,7 @@ import qualified Data.String.Utils as Str
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as Token
 import Text.ParserCombinators.Parsec.Language (javaStyle)
+import Text.ParserCombinators.Parsec.Perm
 
 -- abstract tree representation of parsed music file
 
@@ -306,12 +307,16 @@ commands = many1 (lexeme command)
 
 -- Voice parsers
 
-readVoiceBody = do
-  symbol "file"
-  filename <- lexeme stringLiteral
-  symbol "pitch"
-  pitch <- lexeme readNotePitch
-  return $ Voice filename pitch
+readVoiceFile = do
+  try $ symbol "file"
+  lexeme stringLiteral
+
+readVoicePitch = do
+  try $ symbol "pitch"
+  lexeme readNotePitch
+
+readVoiceBody =
+  permute $ Voice <$$> readVoiceFile <|?> (NotePitch C 4, readVoicePitch)
 
 -- Top-level parsers
 

@@ -2,12 +2,11 @@
 
 voice "trumpet" {
   file "trumpet.wav"
-  pitch C
 }
 
 voice "brass" {
-  file "brass.wav"
   pitch a
+  file "brass.wav"
 }
 
 channel 0 {
