@@ -1,34 +1,24 @@
 // vim: ts=2 sw=2 expandtab ft=java
 
-Instrument "trumpet" {
-  Load "trumpet.wav"
+voice "trumpet" {
+  file "trumpet.wav"
+  pitch C
 }
 
-Instrument "brass" {
-  Load "brass.wav"
+voice "brass" {
+  file "brass.wav"
+  pitch a
 }
 
-Channel 0 {
-  BPM 150 /* in quarter notes */
-  Octave 4
-  Select "brass"
-  Loop 3 {
-    Pitch A /* -/+ */
-    /* 1w = 2h = 4 = 8e = 16s = 32t */
-    Play 10
-    Wait 4
+channel 0 {
+  [tempo 150, unit 1/8, voice "brass"]
+  {times 3:
+    a8 c2 R6
+    {on 3: c2 d4 f#2}
   }
 }
 
-Channel 1 {
-  BPM 150
-  Octave 4
-  Select "trumpet"
-  Loop 5 {
-    Pitch B
-    Play 8
-    Wait 2
-  }
+channel 1 {
+  [tempo 150, unit 1/4, voice "trumpet"]
+  {times 5: b, C D' R}
 }
-
-/* Pitch in [ C, C#, D, D#, E, F, F#, G, G#, A, A#, B ] */
