@@ -13,6 +13,7 @@ channel 0 {
   [tempo 150, unit 1/8, voice "brass"]
   {times 3:
     a8 c2 R6
+    {with [tempo +20]: c d/2 e/2}
     {on 3: c2 d4 f#2}
   }
 }

@@ -34,12 +34,13 @@ data Setting = SetTempo Nat          -- beats per minute (in quarter-notes)
              | ModVolume Float       -- modify volume by f
              | UseVoice String       -- index in instrument list
 
-data Command = Sequence [Playable]   -- sequence of playable commands
-             | Modify [Setting]      -- setting change
-             | Insert String         -- play pattern of given name
-             | Times Nat [Command]   -- repeat command stream n times
-             | Forever [Command]     -- repeat command stream forever
-             | On Nat [Command]      -- on i-th iteration execute some commands
+data Command = Sequence [Playable]       -- sequence of playable commands
+             | Modify [Setting]          -- setting change
+             | Insert String             -- play pattern of given name
+             | Times Nat [Command]       -- repeat command stream n times
+             | Forever [Command]         -- repeat command stream forever
+             | On Nat [Command]          -- on i-th iteration execute commands
+             | With [Setting] [Command]  -- change setting for given scope
 
 data Voice = Voice { audioFile    :: String,
                      defaultPitch :: NotePitch }
@@ -52,7 +53,8 @@ data Music = Music { voices   :: [(String, Voice)],
 
 -- pretty printers for AST types
 
-show_list l = Str.join " " (map show l) 
+show_list l = "[" ++ Str.join ", " (map show l) ++ "]"
+show_seq l  = Str.join " " (map show l)
 show_diff n = if n >= 0 then "+" ++ show n else show n
 
 instance Show Semitone where
@@ -89,26 +91,27 @@ instance Show Note where
   show (Note pitch' length') = show pitch' ++ show length'
 
 instance Show Playable where
-  show (Play n) = show n
-  show (Rest l) = "R" ++ show l
-  show (PlayTie nl) = "(" ++ show_list nl ++ ")"
+  show (Play n)     = show n
+  show (Rest l)     = "R" ++ show l
+  show (PlayTie nl) = "(" ++ show_seq nl ++ ")"
 
 instance Show Setting where
-  show (SetTempo n) = "tempo " ++ show n
-  show (ModTempo n) = "tempo " ++ show_diff n
-  show (SetUnit n) = "unit 1/" ++ show n
-  show (ModPitch n) = "pitch " ++ show_diff n
+  show (SetTempo n)  = "tempo " ++ show n
+  show (ModTempo n)  = "tempo " ++ show_diff n
+  show (SetUnit n)   = "unit 1/" ++ show n
+  show (ModPitch n)  = "pitch " ++ show_diff n
   show (SetVolume f) = "volume " ++ show f
   show (ModVolume f) = "volume " ++ show_diff f
-  show (UseVoice s) = "voice " ++ show s
+  show (UseVoice s)  = "voice " ++ show s
 
 instance Show Command where
-  show (Sequence l) = Str.join ", " (map show l) 
-  show (Modify l) = "[" ++ show_list l ++ "]"
-  show (Insert s) = "{insert " ++ show s ++ "}"
-  show (Times n l) = "{times " ++ show n ++ ": " ++ show_list l ++ "}"
-  show (Forever l) = "{forever: " ++ show_list l ++ "}"
-  show (On n l) = "{on " ++ show n ++ ": " ++ show_list l ++ "}"
+  show (Sequence l) = show_seq l
+  show (Modify l)   = show_list l
+  show (Insert s)   = "{insert " ++ show s ++ "}"
+  show (Times n l)  = "{times " ++ show n ++ ": " ++ show_seq l ++ "}"
+  show (Forever l)  = "{forever: " ++ show_seq l ++ "}"
+  show (On n l)     = "{on " ++ show n ++ ": " ++ show_seq l ++ "}"
+  show (With sl cl) = "{with " ++ show_list sl ++ ": " ++ show_seq cl ++ "}"
 
 -- let's reuse some of Java parser elements and define some parser helpers
 
@@ -294,13 +297,21 @@ readOn = do
   cs <- commands
   return $ On (fromIntegral i) cs
 
+readWith = do
+  settings <- brackets $ commaSep1 readSetting
+  colon
+  cs <- commands
+  return $ With settings cs
+
 readControlCommand = braces $ do
-  name <- symbol "times" <|> symbol "insert" <|> symbol "forever" <|> symbol "on"
+  name <- symbol "times" <|> symbol "insert" <|> symbol "forever"
+          <|> symbol "on" <|> symbol "with"
   case name of
             "times"   -> readTimes
             "insert"  -> readInsert
             "forever" -> readForever
             "on"      -> readOn
+            "with"    -> readWith
 
 command  = readSettingsChange <|> readSequence <|> readControlCommand
 commands = many1 (lexeme command)
