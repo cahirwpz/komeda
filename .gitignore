@@ -7,6 +7,7 @@ cabal-dev
 *.wav
 *.bin
 *.swp
+*.DS_Store
 *~
 yamac
 yamaplay
