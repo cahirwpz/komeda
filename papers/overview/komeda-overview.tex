@@ -1,0 +1,385 @@
+\documentclass[10pt]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage{mathptmx}
+\usepackage{amsmath}
+\usepackage[normalem]{ulem}
+\usepackage{tikz}
+\usepackage{hyperref}
+\usepackage{listings}
+\renewcommand*\ttdefault{txtt}
+\usepackage[T1]{fontenc}
+
+\definecolor{links}{HTML}{2A1B81}
+\hypersetup{colorlinks,linkcolor=,urlcolor=links}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+  numbers=left,
+  numbersep=-3em,
+  numberstyle=\color{gray}
+}
+
+\usetikzlibrary{shapes,arrows,automata}
+
+\tikzset{
+  vertex/.style={
+    rectangle,
+    rounded corners,
+    draw=black, thick,
+    text centered
+  },
+}
+
+\mode<beamer>
+{
+  \usetheme{Frankfurt}
+  \useoutertheme{infolines}
+  \setbeamercovered{transparent}
+}
+
+\subject{Talks}
+
+\AtBeginSection[]
+{
+  \begin{frame}<beamer>{}
+    \tableofcontents[currentsection]
+  \end{frame}
+}
+
+\title[Komeda]{
+  \Huge{Komeda}\\
+  \vspace{0.25em}
+  \small{Framework for Interactive Algorithmic Music On Embedded Systems}}
+\author[Krystian Bacławski]{
+  \href{mailto:cahirwpz@cs.uni.wroc.pl}{Krystian Bacławski}, 
+  \href{mailto:yagyu@cs.uni.wroc.pl}{Dariusz Jackowski}}
+\institute[University of Wrocław]{
+  Computer Science Department\\University of Wrocław}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\section{Introduction}
+
+\begin{frame}{Introduction}
+  \begin{block}{Komeda platform comprises of:}
+    \begin{itemize}
+      \item music notation language,
+      \item hardware independent binary representation,
+      \item portable virtual machine capable of music playback,
+      \item hardware communication protocol,
+      \item interface for sensors and output devices,
+      \item support for music generation routines.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\section{The language}
+
+\begin{frame}{The design of Komeda language}
+  \begin{block}{Design concepts:}
+    \begin{itemize}
+      \item music split into parts (patterns, phrases, choruses)
+      \item rich structure of music score (loops, repetitions, alternatives)
+      \item score playback in modified context (transposition, volume change)
+      \item virtual players synchronization (transition to next music part)
+      \item music interaction with external world (sensors, controllers)
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Design challenges:}
+    \begin{itemize}
+      \item capturing all aforementioned concepts unambiguously,
+      \item balancing between having a readable syntax and concise notation,
+      \item finding effective mapping to intermediate form (Komeda bytecode),
+      \item simplicity of virtual machine and extensions.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Examples (1)}
+  \begin{block}{Channel notation:}
+    \begin{lstlisting}
+      channel 0 play @Pattern0
+    \end{lstlisting}
+  \end{block}
+
+  \begin{block}{Sample music score:}
+    \begin{lstlisting}
+      pattern @Example {
+        @tempo 120
+        @unit 1/4
+
+        C#, D r a3/2 d'/2 e2
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Examples (2)}
+  \begin{block}{Slurrs:}
+    \begin{lstlisting}
+      pattern @TwoSlurrs {
+        a~a/2 c~d~e2~f
+      }
+    \end{lstlisting}
+  \end{block}
+
+  \begin{block}{Pattern invocation:}
+    \begin{lstlisting}
+      pattern @Pattern0 {
+        ...
+        @Pattern1
+        ... 
+      }
+
+      pattern @Pattern1 {
+        ...
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Examples (3)}
+  \begin{block}{Temporary parameters modification:}
+    \begin{lstlisting}
+      pattern @NoteSequence {
+        ...
+      }
+
+      pattern @FooBar {
+        ...
+        with @pitch +3 @volume +10% {
+          @NoteSequence
+        }
+        ...
+        with @pitch -2 {
+          @NoteSequence
+        }
+        ...
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Examples (4)}
+  \begin{block}{Nested loops and alternatives:}
+    \begin{lstlisting}
+      pattern @FooBar {
+        ...
+        times 8 {
+          ...
+          on 3 {
+            ...
+            times 2 {
+              /* do it twice on 3rd repetition of outer loop */
+              ...
+            }
+          }
+          ... 
+          on 4 { ... }
+        }
+        ...
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Examples (5)}
+  \begin{block}{Infinite loop with a break on user's action:}
+    \begin{lstlisting}
+      @Button = ...
+
+      pattern @FooBar {
+        forever {
+          ...
+          if @Button.pressed()
+          break
+          ...
+        }
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Examples (6)}
+  \begin{block}{Synchronization through meeting points}
+    \begin{lstlisting}
+      channel 0 play @PatA
+      channel 1 play @PatB
+
+      rendezvous @Part2 for 2
+
+      pattern @PatA {
+        times 3 { ... }
+        ...
+        arrive @Part2
+        ...
+      }
+
+      pattern @PatB {
+        ...
+        times 2 { ... }
+        arrive @Part2
+        ...
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Examples (7)}
+  \begin{block}{Communication through signaling}
+    \begin{lstlisting}
+      signal @StopImprovisation
+
+      pattern @PatC {
+        ...
+        /* for the drummer: please stop improvising */
+        notify @StopImprovisation
+        ...
+      }
+
+      pattern @PatD {
+        ...
+        until @StopImprovisation {
+          // some crazy beats :)
+          ...
+        }
+        acknowledge @StopImprovisation
+        ...
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Example (8)}
+  \begin{block}{Voice definition}
+    \begin{lstlisting}
+      voice @Drum {
+        file "drum.wav"
+        pitch a
+        sustain 0.2 0.9
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+\section{The virtual machine}
+
+\begin{frame}{Binary representation}
+  \begin{block}{Reduced number of orthogonal instructions.}
+    \begin{description}
+      \item[Q:] Could provide $1:1$ mapping between Komeda and native
+        instruction set? (portability vs. efficiency)
+      \item[A:] {\bf We choose portability!}
+    \end{description}
+  \end{block}
+
+  \begin{block}{Sizeable register file and a stack.}
+    \begin{itemize}
+      \item Komeda is about expressing control flow -- not data processing.
+      \item No concept of memory (scarce resource).
+      \item Virtual registers and stack store program's state.
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Uniform size of instructions (2 bytes).}
+    \begin{itemize}
+      \item Makes it easy to quickly decode and dispatch instructions.
+      \item Simplified pattern generation by native code.
+      \item Easy decompilation.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Execution engine}
+  \begin{description}
+    \item[{\tt NotePlayer}] a scheduler that updates the state of channels and
+      reprograms {\tt AudioPlayer} respectively.  For each note being played
+      {\tt NotePlayer} maintains an alarm clock.  After a note is expired, next
+      one is fetched. Secondary functionality -- the maintenance of
+      synchronization state between channels.
+
+    \item[{\tt AudioPlayer}] mixes audio inputs into a stream suitable for
+      audio playback device.  Heavily dependent on the platform: {\tt DAC} with
+      or without {\tt DMA}, {\tt PWM} generator, {\tt FM} synthesis chip.  {\tt
+        AudioPlayer} may perform some computations (e.g. sound synthesis,
+      fetching samples from storage device).  Probably the only subsystem
+      called periodically by the system clock.
+
+    \item[{\tt Interpreter}] invoked by {\tt NotePlayer} to update the state of
+      a channel.  Produces one note or rest at a time.  Executes Komeda
+      instructions.
+
+    \item[{\tt NoteGenerator}] optional subsystem written in C language.  Implements
+      an algorithm not expressible in Komeda language.  May intercept calls to
+      {\tt Interpreter}.
+  \end{description}
+\end{frame}
+
+\begin{frame}{Modules}
+  \begin{block}{Lots of similarities to object oriented paradigm:}
+    \begin{itemize}
+      \item internal state not visible to Komeda language,
+      \item methods (possibly blocking),
+      \item properties -- exposed state,
+      \item parametrized and non-trivial initialization,
+      \item multiple instances per program.
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Possible applications:}
+    \begin{itemize}
+      \item Synthesized voices.
+      \item Communication over wireless network.
+      \item Sensors and controllers.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\section{Future work}
+
+\begin{frame}{We're currently working on...}
+  \begin{block}{Implementation for embedded platforms:}
+    \begin{enumerate}
+      \item Arduino (optionally, with WAVE shield)
+      \item 8-bit and 16-bit microcontrollers (PIC, DSPIC, AVR, etc.)
+    \end{enumerate}
+  \end{block}
+
+  \begin{block}{Establishing interface for plugins:}
+    \begin{enumerate}
+      \item {\bf Voices}: {\tt DAC} and {\tt FM} chips, {\tt PWM} generators.
+      \item {\bf External instruments}: {\tt MIDI} interface, robotic control
+        of real instrument.
+      \item {\bf Sensors}: light, temp. or movement controlling tempo, volume
+        or pitch.
+      \item {\bf Generators}: algorithms generating note stream, in {\tt C}
+        language.
+    \end{enumerate}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Planned features}
+  \begin{enumerate}
+    \item Sound synthesis.
+    \item Continuous parameter control (linearity, envelopes).
+    \item Microtones.
+    \item Source code macros.
+  \end{enumerate}
+\end{frame}
+
+\section*{Questions}
+
+\begin{frame}
+  \begin{center}
+    \Huge{Questions?}
+  \end{center}
+\end{frame}
+
+\end{document}

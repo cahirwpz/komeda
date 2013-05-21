@@ -1,0 +1,692 @@
+\documentclass{article}
+\usepackage{smacsmc2013}
+\usepackage{times}
+\usepackage{ifpdf}
+\usepackage[english]{babel}
+\usepackage{cite}
+\usepackage{listings}
+
+\lstset{
+  basicstyle=\small\ttfamily,
+  captionpos=b
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%% Some useful packages %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%% See related documentation %%%%%%%%%%%%%%%%%%%%%%%%%%
+%\usepackage{amsmath} % popular packages from Am. Math. Soc. Please use the 
+%\usepackage{amssymb} % related math environments (split, subequation, cases,
+%\usepackage{amsfonts}% multline, etc.)
+%\usepackage{bm}      % Bold Math package, defines the command \bf{}
+%\usepackage{paralist}% extended list environments
+%%subfig.sty is the modern replacement for subfigure.sty. However, subfig.sty 
+%%requires and automatically loads caption.sty which overrides class handling 
+%%of captions. To prevent this problem, preload caption.sty with caption=false 
+%\usepackage[caption=false]{caption}
+%\usepackage[font=footnotesize]{subfig}
+
+%user defined variables
+\def\papertitle{Komeda: Framework for Interactive Algorithmic Music On Embedded
+  Systems}
+\def\firstauthor{Krystian Bac\l awski}
+\def\secondauthor{Dariusz Jackowski}
+
+% pdf-tex settings: detect automatically if run by latex or pdflatex
+\newif\ifpdf
+\ifx\pdfoutput\relax
+\else
+   \ifcase\pdfoutput
+      \pdffalse
+   \else
+      \pdftrue
+\fi
+
+\ifpdf % compiling with pdflatex
+  \usepackage[pdftex,
+    pdftitle={\papertitle},
+    pdfauthor={\firstauthor, \secondauthor},
+    bookmarksnumbered, % use section numbers with bookmarks
+    pdfstartview=XYZ % start with zoom=100% instead of full screen; 
+                     % especially useful if working with a big screen :-)
+   ]{hyperref}
+  \pdfcompresslevel=9
+
+  \usepackage[pdftex]{graphicx}
+  % declare the path(s) where your graphic files are and their extensions so 
+  % you won't have to specify these with every instance of \includegraphics
+  \graphicspath{{./figures/}}
+  \DeclareGraphicsExtensions{.pdf,.jpeg,.png}
+
+  \usepackage[figure,table]{hypcap}
+
+\else % compiling with latex
+  \usepackage[dvips,
+    bookmarksnumbered, % use section numbers with bookmarks
+    pdfstartview=XYZ % start with zoom=100% instead of full screen
+  ]{hyperref}  % hyperrefs are active in the pdf file after conversion
+
+  \usepackage[dvips]{epsfig,graphicx}
+  % declare the path(s) where your graphic files are and their extensions so 
+  % you won't have to specify these with every instance of \includegraphics
+  \graphicspath{{./figures/}}
+  \DeclareGraphicsExtensions{.eps}
+
+  \usepackage[figure,table]{hypcap}
+\fi
+
+%setup the hyperref package - make the links black without a surrounding frame
+\hypersetup{
+    colorlinks,%
+    citecolor=black,%
+    filecolor=black,%
+    linkcolor=black,%
+    urlcolor=black
+}
+
+
+% Title.
+% ------
+\title{\papertitle}
+
+% Authors
+%--------------
+\twoauthors
+{\firstauthor}{Institute of Computer Science \\ University of Wroc\l aw\\
+  {\tt\href{mailto:krystian.baclawski@ii.uni.wroc.pl}
+    {krystian.baclawski@ii.uni.wroc.pl}}}
+{\secondauthor}{Institute of Computer Science \\ University of Wroc\l aw \\
+  {\tt\href{mailto:dariusz.jackowski@ii.uni.wroc.pl}
+    {dariusz.jackowski@ii.uni.wroc.pl}}}
+
+% ***************************************** the document starts here ***************
+\begin{document}
+
+\capstartfalse %
+\maketitle %
+\capstarttrue %
+
+\begin{abstract}
+Application of embedded systems to music installations is limited due to
+absence of convenient software development tools. This is a very unfortunate
+situation as these systems offer a set of advantages in comparison to desktop
+or laptop computers. Embedded devices are small in size therefore easier to
+incorporate into the form of the work. These devices are effortlessly
+expandable with various sensors and controllers. Moreover they are affordable,
+which creates possibility to build networks of cooperating devices.
+
+In this paper we describe a design of Komeda -- the platform for interactive
+algorithmic music on embedded systems. The framework consist of language based
+on the score-with-blanks approach, the intermediate binary representation,
+portable virtual machine and module system.
+\end{abstract}
+%
+
+\section{Introduction}
+\label{sec:introduction}
+
+There is a noticeable absence of a general framework for the creation of a
+music installation without incorporating desktop or notebook computers. Ideally
+such works of art should employ equipment, which is as much unobstructive to
+the visual and spatial form as possible. Thus the most viable choice is
+apparently to use small embedded systems, which could be easily built into both
+static and movable parts of an installation. Such systems should be based on
+affordable components and be expandable with various sensors and output
+devices. Another conceivably useful feature is mutual communication between
+system components. Hardware that matches the description above already exists,
+but it's not backed up by good software framework, that enables easy creation
+of musical applications.
+
+The platform should include:
+\begin{itemize}
+  \item music notation language,
+  \item hardware independent binary representation,
+  \item portable virtual machine capable of music playback,
+  \item hardware communication protocol,
+  \item interface for sensors and output devices,
+  \item support for music generation routines.
+\end{itemize}
+
+We would like to present the Komeda system, which currently only provides
+subset of mentioned features, but in the future should encompass all of them. 
+
+\section{Overview} 
+\label{overview}
+
+Komeda consists of the following components: language that supports
+score-with-blanks approach, intermediate binary representation, virtual machine
+and module system. The language is used to create a musical score with place
+holders (''blanks'') for the code generated by the desired module. The score
+takes form of list of notes organized in patterns which are similar to
+parameterless procedures from programming languages. In addition to notes the
+language offers some limited set of control structures, patterns invocation and
+instructions to communicate with modules. Modules represent instruments,
+generator routines and inputs from sensors. Each module is assigned a set of
+parameters and actions. The binary representation is platform independent
+bytecode for KomedaVM. The virtual machine provides player routine (or more
+specifically a scheduler and controller for instrument modules) and interpreter
+for the bytecode.
+
+\section{Language}
+\label{lang}
+
+\subsection{Design}
+\label{lang:design}
+
+As we managed to highlight earlier, Komeda is a complete environment. The first
+and the most important component of the platform is the language. It is mainly
+focused on providing a succinct music notation description. However, it is not
+solely a data definition language like XML since there is a need for some
+programming constructs. We enable the user to express easily following
+concepts:
+
+\begin{itemize}
+  \item music split into parts (i.e. patterns, phrases, choruses),
+  \item rich structure of music score (incl. loops, repetitions, alternatives),
+  \item playback of score fragment in modified context (i.e.~transposition,
+    volume change),
+  \item virtual players synchronisation (e.g.~concerted transition to next
+    music part), 
+  \item music interaction with external world (e.g.~sensors, controllers).
+\end{itemize}
+
+Having language users without much of a former experience, we would like them to find the concepts clear and code readable. To help with adoption of Komeda, we decided to base its syntax on something widely known in both worlds of music notation and programming languages. Hence, significant number of concepts were borrowed from LilyPond \cite{lily} and Java. 
+
+The main challenges we experienced while designing Komeda were:
+\begin{itemize}
+  \item capturing all concepts needed to represent music score unambiguously --
+    i.e.~a user should be encouraged to express ideas in the least number of
+    possible ways,
+  \item balancing between having a readable syntax and concise notation -- note
+    that these two aspects collide with each other, as shorter words become
+    more cryptic,
+  \item finding effective mapping to intermediate form (Komeda bytecode) --
+    shape of binary data that represents the music to be executed in VM,
+  \item simplicity of virtual machine and extensions (e.g. generators, sensors,
+    etc.).
+\end{itemize}
+
+Our design went a complete overhaul several times, as we were discovering
+dependencies between all three layers of Komeda environment: the language, the
+binary representation and the virtual machine.
+
+At the time of writing we have working compiler from Komeda to intermediate
+representation. The implementation is written in Haskell, a purely functional
+language with strong static typing. Our choice is justified by a few arguments:
+
+\begin{itemize}
+  \item Haskell \cite{haskell} has set of rich abstractions and expressive
+    types - our code looks clear and simple, there is little verbosity or
+    boilerplate code, that obliterates the ideas,
+  \item availability of great parser frameworks -- Parsec \cite{parsec} is used
+    to express Komeda grammar.
+\end{itemize}
+
+\subsection{Theoretical considerations}
+\label{lang:theory}
+
+We choose to model the language after western music notation. As it is not
+supposed to be music engraving language, we had some flexibility in
+implementing musical concepts. In some cases we completely resign from some of
+them -- most notable examples are key signatures, bars and time signatures.
+Here we would like to supply few arguments for this omissions.
+
+The notion of key signature associated with tonality was made somewhat obsolete
+by atonal techniques or scales other than modes of the major system. Moreover
+introducing the key signature could result in the decreased readability. Such
+is the case with Oliver Messaien's prelude {\it La colombe} notated in E major
+key in which most of the chords have more than one accidental, which makes hard
+to keep track of exact pitches in signatures with four sharps.  Similarly
+notation of music based on the non-standard heptatonic scales requires custom
+key signatures (e.g. some of the pieces from Bela Bartok's {\it Microcosmos}
+which utilize both flats and sharps in the signature) or usage of accidentals
+instead of the key signature.  Scales with more than seven pitch class
+appearing for example  in the music of Bartok \cite{bela1} \cite{bela2} and
+Messaien (whose modes of limited transposition \cite{mess} mostly have more
+than seven tones) cannot be notated without accidentals. The same happens with
+works based on the serialism, dodecaphony and intervals pairings \cite{lutos}
+or other atonal techniques. There is also another argument for foregoing the
+key signature even for tonal works. Contemporary composers often chose to
+notate them with only accidentals - great example here is the first movement of
+III Symphony by Henryk G\'{o}recki, who always notated F\# with accidental in
+this E-minor piece.
+
+Bars and metre are used in music mainly for three things: structuring, as a
+help for the performer in keeping track of the score and to introduce default
+accents in music. In Komeda the visual structure of music can be imposed using
+the white characters and comments. Obviously Komeda does not need any help in
+keeping track of the score, so we are left with only last application of
+measures. The problem of accent induced by metre is that there is not one
+standard of it. Underlying pulse of different time signatures is associated
+with genre, period and personal styles of both the composer and the performer.
+Moreover in the contemporary music the implicit accent is non-existent
+\cite{harm}. The lack of bars also simplify music generation.
+
+\subsection{Syntax concepts}
+\label{lang:concepts}
+
+\subsubsection{Channels}
+Komeda language is oriented towards describing behavior of monophonic playback
+channels. Each channel has an independent thread of execution that interprets
+notes and instruction attached with primary music score (pattern).
+
+\begin{lstlisting}[caption=Channel notation example]
+channel 0 play @Pattern0
+\end{lstlisting}
+
+The definition above tells, that the channel number 0 will play a program
+defined by {\tt Pattern0}. Number of channels is limited by the implementation
+of KomedaVM.
+
+Note that the program executed by the channel may make use of certain sensor,
+voices, generator modules. That information has to be specified in channel
+initialization routine that is automatically added by the compiler. Thus code
+analysis has to be performed at compile time. 
+
+\subsubsection{Identifiers and Parameters}
+
+Komeda programs will assign names to specific objects like patterns, voices,
+etc. Another group of names refer to certain playback parameters like tempo,
+volume, etc. Hence two groups of identifiers were conceived to capture these
+concepts. All user introduced identifiers begin with “@” sign, followed by
+uppercase letter (e.g. {\tt @FooBar}). Parameters follow similar syntax, though
+they begin with lowercase letter (e.g. {\tt @tempo}). Some of them are built
+into language (i.e. channel control), but others depend on modules imported
+into the scope of a channel.
+
+\subsubsection{Patterns}
+They are used to give music score a basic structure. Each pattern is given a
+unique name and can be referred to from other patterns, as if it was copied
+into the place of reference. Pattern execution interprets notes and control
+commands hold within its structure.
+
+\begin{lstlisting}[caption=Example of pattern invocation]
+pattern @Pattern0 {
+  ...
+  @Pattern1
+  ... 
+}
+
+pattern @Pattern1 {
+  ...
+}
+\end{lstlisting}
+
+\subsubsection{Notes, Rests and Slurs}
+Very basic concept embraced by Komeda is a note. It is specified by pitch
+(semitone) and note length. A close relative of a note is a rest, which stops
+playback for a given unit of time. The timing is implicit - i. e. notes starts
+when a previous one stops. Pitch is expressed in Helmholtz notation with sharps
+only (we chose to resign from flats). Length is represent as a fraction of
+default unit. As this is notably more powerful than standard notation we were
+able to resign from tuples and dots. Please note that although unit can be set
+arbitrary, tempo is expressed always in quarter notes per minute.
+
+\begin{lstlisting}[caption=Sample music score]
+@tempo 120
+@unit 1/4
+
+C#, D r a3/2 d'/2 e2
+\end{lstlisting}
+
+Komeda supports expressing slurs. Also ties are supported, though they`re
+immediately coalesced into single note at compilation time.
+
+\begin{lstlisting}[caption=Expressing slurs]
+a~a/2 c~d~e2~f
+\end{lstlisting}
+
+\subsubsection{Control Structures}
+Usually a score consist of a few fragments that are repeated several {\tt
+  times}. Certainly one would like to express that concisely, possibly giving
+alternative endings (western music notation uses volta brackets for that
+purpose). Komeda is more flexible as it allows to designate alternative
+fragments (not only endings) {\tt on} specified loop iteration (please note
+that alternative fragments don't have to be defined for each iteration, which
+can lead to repetitions of different lengths). It's also possible to nest
+repetitions as shown below:
+
+\begin{lstlisting}[caption=Nested loops and alternatives]
+times 8 {
+  ...
+  on 3 {
+    ...
+    times 2 {
+      /* do it twice on 3rd repetition
+         of outer loop */
+      ...
+    }
+  }
+  ... 
+  on 4 { ... }
+}
+\end{lstlisting}
+
+However sometimes one would like to express possibly infinite repetition that
+can be terminated under certain condition (e.g. user interaction). That is
+achievable using {\tt forever} construct.
+
+\begin{lstlisting}[caption=Infinite loop with break on user action]
+forever {
+  ...
+  if @Button.pressed()
+    break
+  ...
+}
+\end{lstlisting}
+
+\subsubsection{Context Changes}
+
+There are several cases, when a user would like to perform series of similar
+actions, captured by a pattern, but with slightly different settings. Example
+of such situation is when there is a pattern representing some phrase which
+should be repeated with different transposition.
+
+\begin{lstlisting}[caption=Temporary parameters modification]
+with @pitch +3 @volume +10% {
+  @NoteSequence
+}
+
+with @pitch -2 {
+  @NoteSequence
+}
+\end{lstlisting}
+
+The with statement can be used to temporarily change a set of parameters for
+the commands placed in its scope.
+
+\subsubsection{Synchronisation}
+
+Because channels are inherently independent, program executing in one channel
+has no way to obtain information about state of another channel. While this
+isolation is generally a good idea, it poses a problem when timing between
+channels is needed to achieve desired effect (e.g. smooth transition from one
+music part to another). To synchronize players, we introduced simple, but
+effective mechanisms based on the idea of notifications and rendezvous points.
+
+In example below we set a meeting point for two players. They will only advance
+to the next part of music, when they both arrive at {\tt @Part2}.
+
+\begin{lstlisting}[caption=Use of meeting points for synchronization]
+rendezvous @Part2 for 2
+
+pattern @PatA {
+  times 3 { ... }
+  ...
+  arrive @Part2
+  ...
+}
+
+pattern @PatB {
+  ...
+  times 2 { ... }
+  arrive @Part2
+  ...
+}
+\end{lstlisting}
+
+Another example requiring synchronization is two players, who improvise at the
+beginning and then want to transition to main theme of work.
+
+\begin{lstlisting}[caption=Communication through signalling]
+signal @StopImprovisation
+
+pattern @PatC {
+  ...
+  /* for the drummer:
+     please stop improvising */
+  notify @StopImprovisation
+  ...
+}
+
+pattern @PatD {
+  ...
+  until @StopImprovisation {
+    // some crazy beats :)
+  }
+  ...
+}
+\end{lstlisting}
+
+\subsubsection{Instruments}
+
+Currently only PCM instruments are supported. Note that at the time of writing
+the compiler supports only WAVE format. Optionally a base pitch and beginning
+and end of looped part of the sample can be given.
+
+\begin{lstlisting}[caption=Example voice definition]
+voice @Drum {
+  file "drum.wav"
+  pitch a
+  sustain 0.2 0.9
+}
+\end{lstlisting}
+
+\section{Virtual Machine}
+
+KomedaVM is a small piece of software residing in flash memory of an embedded
+device. It is responsible for loading (from flash, RAM or if applicable some
+external sources such as SD cards) binary representation of Komeda language and
+running it. For this the machine has to maintain global state and private state
+of each channel. Additionally it manages modules in use and schedule execution
+of instruments playback. Certain assumptions described in this chapter
+influenced shape of the language or imposed particular constraints on the
+design (e.g. number of available channels).  
+
+\subsection{Binary representation}
+
+Almost all Komeda language concepts have their counterparts in binary
+representation. Some of composite high-level instructions are split down into
+simpler constructs as the compiler lowers the code. At the very bottom each
+channel behaves as an independent state machine - a very simple microprocessor
+with specialized set of instructions. We will not provide details of
+instruction set architecture (ISA) employed by KomedaVM, as it is still
+undergoing significant changes.
+
+Having spent considerable amount of time analyzing contemporary
+micro-controllers ISAs, we decided to keep close to these designs. Affinities we
+would like to preserve are:
+
+\begin{description}
+  \item[Reduced number of orthogonal instructions.]If we keep virtual instruction
+    design close enough to existing ISA, for instance AVR \cite{avr}, we possibly
+    could provide one-to-one mapping between Komeda and native instructions. That
+    could reduce the size of interpreter as the processor is able to execute some
+    instructions directly. While it is tempting to follow such path, certainly
+    specialization hinders portability of virtual machine, which at the moment is
+    our priority goal. Thus, we decide to take opposite approach, and deliver
+    instructions that can be interpreted easily on most popular embedded
+    processors, which tend to have RISC-like ISAs \cite{risc}.
+
+  \item[Sizeable register file and a stack.] Komeda language is mainly oriented
+    towards expressing control flow - it is not suitable for data processing.
+    Thus, we decided to drop concept of program is memory, which anyway is a
+    scarce resource in embedded systems. Instead, we use virtual registers and
+    stack to store state of a program. The requirement for virtual stack emerged
+    as we considered situation, when a pattern invokes another pattern - in some
+    sense it mimics concept of function calls and activation records from
+    general purpose programming languages.
+
+  \item[Uniform size of instructions i.e. 2 bytes.] If Komeda binary
+    representation is going to be interpreted in software, the interpreter must
+    be able to quickly decode and dispatch instructions. Such representation is
+    also convenient, if we allow any arbitrary Komeda code processing (e.g.
+    decompilation or whole pattern generation by native code).
+\end{description}
+
+\subsection{Modules}
+
+Modules from the virtual machine point of view are  independent entities. The
+communications with them is performed via specialized modules address space,
+which has to be initialized by KomedaVM before execution of a program. The
+machine could also call a specific action of a module which virtually means
+call of the native code (i.e. not part of KomedaVM). This is the only possible
+situation in which control is transferred from Komeda code to the external
+native code.
+
+Lets consider a single module. Firstly, we would like to avoid exposing the
+state of a module to the virtual machine, if possible. Secondly, when you
+consider module's internal state, it may be too big to represent by the
+registers visible to KomedaVM. Thus the machine has to maintain the state that
+is not visible to Komeda code directly. Each module may be subjected to
+non-trivial initialization. Finally, a program may use same module but
+differently initialized or used in two different independent contexts.
+
+As a consequence, we decided to design modules in spirit of object oriented
+paradigm, but without inheritance. Lots of similarities emerged - clearly
+modules are classes, modules with attached state are class instantiations
+(i.e.~objects), parameters are public properties of an object, and remote
+procedures - just methods. Such model can be efficiently mapped onto C language
+which lacks of OO features.
+
+\subsection{Execution engine}
+
+Runtime system is composed of three components characterized shortly below.
+
+\begin{description}
+  \item[NotePlayer] Central subsystem of Komeda runtime. It is a scheduler that
+    takes care of updating the state of channels (i.e. note pitch and length,
+    slur mode, instrument number) and reprogramming AudioPlayer respectively.
+    For each note being played NotePlayer maintains an alarm clock, which is
+    triggered when the note is about to stop being played. Next note is then
+    fetched and AudioPlayer reprogrammed to play it. Secondary functionality is
+    related to the maintenance of synchronization state between channels.
+
+  \item[AudioPlayer] Its main task is to continuously mix all audio inputs into
+    a stream suitable to be digested by audio playback device. This subsystem
+    is considered to be the most platform dependant constituent. Playback
+    device implementation may vary greatly for each hardware platform. It can
+    be implemented as a DAC with or without DMA (i.e. DAC capable of feeding
+    itself with consecutive samples without involving processor), a simple PWM
+    generator, FM synthesis sound chip. AudioPlayer may be programmed to
+    perform certain non-trivial computation like sound synthesis, or system
+    interaction like fetching samples from storage device. It seems to be the
+    only subsystem that needs to be called synchronously by the system clock.
+
+  \item[Interpreter] Subsystem invoked by NotePlayer to update the state of a
+    channel. Each interpreter invocation has to end up producing a note
+    information or a rest, eventually forcing interpreter to enter wait state
+    on that channel. The result is obtained by executing compiled Komeda
+    language statements.
+
+  \item[NoteGenerator] An optional subsystem written in C language that either
+    was assigned to a channel by a programer or temporarily suppressed Komeda
+    interpreter and intercepted its execution. It employs certain algorithm to
+    deliver notes or rests upon channel update action.
+\end{description}
+
+\section{Future Work}
+
+\subsection{Features currently in development}
+
+At the time of writing Komeda is under active development. That means some of
+its interesting features undergo implementation process and are being evaluated
+with regards to language and virtual machine design. Our long term focus is the
+support for embedded platforms, such as Arduino (with optional WAVE shield),
+8-bit and 16-bit microcontrollers (PIC, DSPIC, AVR, etc.) with built-in or
+attached Digital-to-Analog converters.
+
+One of currently identified design issues is platform specific instruments
+support. For many embedded devices, especially those without D/A converter,
+implementation of PCM instruments is either cumbersome (complex sound encoding)
+or utterly impractical (overhead of PCM emulation too high). On the other hand,
+those devices are likely to have some native support for generation of simple
+waves, e.g. PWM-based square wave generator. Other conceivable platform
+specific instruments are external devices controlled via MIDI interface or
+mechanical devices that control real instruments. Whole range of possibilities
+is available here - from simple sine wave generator, through MIDI synthesizers,
+to another embedded device controlling servo arm playing xylophone.
+
+Extending Komeda with non-PCM instruments is not trivial and requires VM
+plug-in system. The core of the virtual machine is going to offer the same
+functionality as current version excluding PCM instruments. 
+
+Basically same programming interface can be extended to modularize the system
+to greater extent.  Two more types of pluggable modules save instruments are
+envisioned: sensors and generators.
+
+\begin{itemize}
+  \item Sensors purpose is to measure physical quantities such as light
+    intensity, magnetic field direction, temperature, etc.; and interpret them
+    in a context of music. The values coming from sensors could be used to play
+    a note, set new tempo rate or voice volume, i.e. control virtually any
+    other parameter available. Example mapping could translate room temperature
+    into music tempo (i.e. hotter/cooler into faster/slower) or light intensity
+    into base pitch of notes being played (i.e. lighter / darker into higher /
+    lower).
+
+  \item Generators are additional mechanism for employing generative music
+    techniques. Their role is to deliver a number of values upon request - a
+    user has freedom to use these values as she wishes. Alternatively the
+    channel could be set to execute code generated by the module until the
+    generator returns control. At the moment of writing music generation can
+    only be achieved by external code modifying Komeda pattern binary
+    representation. While this method is the most powerful one, almost
+    certainly is the most difficult to use properly. 
+\end{itemize}
+
+\subsection{Planned features}
+
+Arguably the most needed feature of Komeda is language supported sound
+synthesis (instead of just instruments as external modules). There are few
+issues worth mentioning:
+
+\begin{itemize}
+  \item There is a need to extend the language to easily supply required
+    synthesis arguments in a concise way.
+
+  \item In chosen model the notes are the only acoustic events. They are
+    mutually independent, save slurs, and take parameters only at
+    initialization time. Though suitable for representing musical score this
+    approach is somewhat limited. Especially when it comes to representing
+    sounds with continuously changing spectra or indefinite pitch, etc. 	
+
+  \item Last but not least, if Komeda was to support synthesis techniques, it
+    would be necessary to extend the language with instrument specification.
+    There are two possibilities to incorporate this into the main language.
+    First option is to extend voice definitions with a new language for
+    instrument specification. Such language could be modelled after CSound
+    orchestra \cite{csound} or Nyquist {\tt .alg} \cite{alg} files. Second
+    option is to extend Komeda language with extra constructs expressing
+    additional sonic events inside patterns. The later approach would greatly
+    increase the expressive power of the language, but could lead to
+    performance loss and increased complexity of the system. 
+\end{itemize}
+
+Another important deficiency of Komeda is absence of continuous parameter
+control. That makes it impossible to express portamento and similar effect.
+Create ritardando or accelerando and crescendo or decrescendo is very
+problematic, as it needs assignment of different tempo or volume to each
+consecutive note. We find three possibilities to solve that -- to allow only
+linear function, piecewise linear (i.e. envelopes) or arbitrary functions (i.e.
+implemented as arrays).
+
+Another desired addition is source code macros. They would be useful for
+implementing of some non essential features. We mean symbolic description of
+tempo or volume levels, flats, mordents and other ornaments. In addition, given
+enough expressive power, the macros could be used to create tools for
+generating or transforming score according to some compositional system. We are
+considering both text-substitution and compile time macros.
+
+Another feature which would increase expressive power is introduction of
+microtones and tunings other than equal temperament. The later is easier, as we
+represent pitch by discrete number.
+
+\section{Conclusions}
+
+Komeda is a complex system and describing its intricacies goes way beyond the
+scope of this paper. Instead we decided to present its philosophy and design
+decisions. We also chose to list possibilities encountered during development
+stages. We hope that people creating similar platforms will find these
+information useful.
+
+As for the future of Komeda, we hope to release a first public version in the
+next few months. As more and more planned features are being incorporated, the
+platform calls for a full evaluation in form of installation or novel
+instrument. We are going to choose several artists for cooperation. Moreover,
+we would like reiterate some concepts from the Komeda, to provide even more
+flexible and easy to use platform.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%bibliography here
+\bibliography{komeda}
+
+\end{document}
