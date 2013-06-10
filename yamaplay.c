@@ -1,10 +1,13 @@
 #include <arpa/inet.h>
+#include <assert.h>
+#include <math.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
 #include <string.h>
+#include <time.h>
 
 #include <portaudio.h>
 #include <samplerate.h>
@@ -146,6 +149,146 @@ PlayerT *LoadYama(const char *path) {
 }
 
 /*
+ * Simple sound synthesis.
+ */
+typedef struct Wave {
+  volatile bool active;
+
+  size_t now, end;
+  size_t pt, pitch;
+  float (*osc)(float);
+
+  struct {
+    bool active;
+    size_t attack, decay, release;
+    float sustain;
+  } adsr;
+} WaveT;
+
+/*
+ * @pitch: in Hertz
+ * @length: in seconds
+ */
+void WaveSet(WaveT *wave, float (*osc)(float), size_t pitch, float length) {
+  wave->end = SAMPLE_RATE * length;
+  wave->pitch = pitch;
+  wave->osc = osc;
+
+  wave->active = false;
+  wave->adsr.active = false;
+}
+
+void WaveSetADSR(WaveT *wave, float attack, float decay, float sustain, float release) {
+  assert(sustain > 0.0 && sustain < 1.0);
+
+  wave->adsr.attack = attack * SAMPLE_RATE;
+  wave->adsr.decay = decay * SAMPLE_RATE;
+  wave->adsr.sustain = sustain;
+  wave->adsr.release = release * SAMPLE_RATE;
+  wave->adsr.active = true;
+}
+
+void WaveStart(WaveT *wave) {
+  wave->now = 0;
+  wave->pt = 0;
+  wave->active = true;
+}
+
+void WaveEnd(WaveT *wave) {
+  wave->active = false;
+}
+
+float ADSR(WaveT *wave) {
+  size_t t = wave->now;
+
+  /* attack? */
+  if (t < wave->adsr.attack)
+    return (float)t / wave->adsr.attack;
+
+  t -= wave->adsr.attack;
+
+  /* decay? */
+  if (t < wave->adsr.decay) {
+    float tr = (float)t / wave->adsr.decay;
+    return tr * (wave->adsr.sustain - 1.0) + 1.0;
+  }
+
+  /* sustain? */
+  if (wave->now < wave->end)
+    return wave->adsr.sustain;
+
+  /* release? */
+  t = wave->now - wave->end;
+
+  if (t < wave->adsr.release) {
+    float tr = (float)t / wave->adsr.release;
+    return wave->adsr.sustain * (1.0 - tr);
+  }
+
+  /* no sound! */
+  wave->active = false;
+  return 0.0;
+}
+
+int WaveNextSample(WaveT *wave) {
+  float v = 0.0;
+
+  if (wave->active) {
+    float pt = wave->pt / (float)SAMPLE_RATE;
+
+    v = wave->osc(pt);
+
+    if (wave->adsr.active) {
+      v *= ADSR(wave);
+    } else if (wave->now >= wave->end) {
+      wave->active = false;
+    }
+
+    wave->pt += wave->pitch;
+
+    if (wave->pt > SAMPLE_RATE)
+      wave->pt -= SAMPLE_RATE;
+
+    wave->now++;
+  } else {
+    WaveEnd(wave);
+  }
+
+  return v;
+}
+
+float Saw(float t) {
+  return 2.0 * t - 1.0;
+}
+
+float Triangle(float t) {
+  t = 4.0 * t;
+
+  if (t >= 1.0 || t <= 3.0)
+    return 2.0 - t;
+
+  if (t < 1.0)
+    return t;
+
+  if (t > 3.0)
+    return t - 4.0;
+
+  return 0.0;
+}
+
+float Sine(float t) {
+  return sin(t * M_PI * 2.0);
+}
+
+float Square(float t) {
+  return (t < 0.5) ? -1 : 1;
+}
+
+float Noise(float t) {
+  return drand48() * 2.0 - 1.0;
+}
+
+/*
  * Playback routines.
  */
 
@@ -201,6 +344,9 @@ static void SigIntHandler(int signo) {
 
 int main(int argc, char *argv[]) {
   PlayerT *player = NULL;
+
+  /* initialize random number generator */
+  srand48(time(NULL));
 
   /* print some diagnostic messages */
   printf("%s\n", Pa_GetVersionText());
