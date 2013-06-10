@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 
 #include <portaudio.h>
@@ -149,9 +150,9 @@ PlayerT *LoadYama(const char *path) {
 }
 
 /*
- * Simple sound synthesis.
+ * Emulate hardware 2-channel direct sound synthesis.
  */
-typedef struct Wave {
+typedef struct Synth {
   volatile bool active;
 
   size_t now, end;
@@ -163,98 +164,114 @@ typedef struct Wave {
     size_t attack, decay, release;
     float sustain;
   } adsr;
-} WaveT;
+} SynthT;
+
+#define HW_CHANNELS 2
+
+SynthT Hardware[HW_CHANNELS];
+
+void HardwareInit() {
+  bzero(&Hardware, sizeof(Hardware));
+}
 
 /*
  * @pitch: in Hertz
  * @length: in seconds
  */
-void WaveSet(WaveT *wave, float (*osc)(float), size_t pitch, float length) {
-  wave->end = SAMPLE_RATE * length;
-  wave->pitch = pitch;
-  wave->osc = osc;
+void SynthSet(size_t num, float (*osc)(float), size_t pitch, float length) {
+  SynthT *synth = &Hardware[num];
 
-  wave->active = false;
-  wave->adsr.active = false;
+  synth->end = SAMPLE_RATE * length;
+  synth->pitch = pitch;
+  synth->osc = osc;
+
+  synth->active = false;
+  synth->adsr.active = false;
 }
 
-void WaveSetADSR(WaveT *wave, float attack, float decay, float sustain, float release) {
+void SynthSetADSR(size_t num, float attack, float decay, float sustain, float release) {
+  SynthT *synth = &Hardware[num];
+
   assert(sustain > 0.0 && sustain < 1.0);
 
-  wave->adsr.attack = attack * SAMPLE_RATE;
-  wave->adsr.decay = decay * SAMPLE_RATE;
-  wave->adsr.sustain = sustain;
-  wave->adsr.release = release * SAMPLE_RATE;
-  wave->adsr.active = true;
+  synth->adsr.attack = attack * SAMPLE_RATE;
+  synth->adsr.decay = decay * SAMPLE_RATE;
+  synth->adsr.sustain = sustain;
+  synth->adsr.release = release * SAMPLE_RATE;
+  synth->adsr.active = true;
 }
 
-void WaveStart(WaveT *wave) {
-  wave->now = 0;
-  wave->pt = 0;
-  wave->active = true;
+void SynthStart(size_t num) {
+  SynthT *synth = &Hardware[num];
+
+  synth->now = 0;
+  synth->pt = 0;
+  synth->active = true;
 }
 
-void WaveEnd(WaveT *wave) {
-  wave->active = false;
-}
-
-float ADSR(WaveT *wave) {
-  size_t t = wave->now;
+float ADSR(SynthT *synth) {
+  size_t t = synth->now;
 
   /* attack? */
-  if (t < wave->adsr.attack)
-    return (float)t / wave->adsr.attack;
+  if (t < synth->adsr.attack)
+    return (float)t / synth->adsr.attack;
 
-  t -= wave->adsr.attack;
+  t -= synth->adsr.attack;
 
   /* decay? */
-  if (t < wave->adsr.decay) {
-    float tr = (float)t / wave->adsr.decay;
-    return tr * (wave->adsr.sustain - 1.0) + 1.0;
+  if (t < synth->adsr.decay) {
+    float tr = (float)t / synth->adsr.decay;
+    return tr * (synth->adsr.sustain - 1.0) + 1.0;
   }
 
   /* sustain? */
-  if (wave->now < wave->end)
-    return wave->adsr.sustain;
+  if (synth->now < synth->end)
+    return synth->adsr.sustain;
 
   /* release? */
-  t = wave->now - wave->end;
+  t = synth->now - synth->end;
 
-  if (t < wave->adsr.release) {
-    float tr = (float)t / wave->adsr.release;
-    return wave->adsr.sustain * (1.0 - tr);
+  if (t < synth->adsr.release) {
+    float tr = (float)t / synth->adsr.release;
+    return synth->adsr.sustain * (1.0 - tr);
   }
 
   /* no sound! */
-  wave->active = false;
+  synth->active = false;
   return 0.0;
 }
 
-int WaveNextSample(WaveT *wave) {
+float SynthNextSample(size_t num) {
+  SynthT *synth = &Hardware[num];
+
   float v = 0.0;
 
-  if (wave->active) {
-    float pt = wave->pt / (float)SAMPLE_RATE;
+  if (synth->active) {
+    float pt = synth->pt / (float)SAMPLE_RATE;
 
-    v = wave->osc(pt);
+    v = synth->osc(pt);
 
-    if (wave->adsr.active) {
-      v *= ADSR(wave);
-    } else if (wave->now >= wave->end) {
-      wave->active = false;
+    if (synth->adsr.active) {
+      v *= ADSR(synth);
+    } else if (synth->now >= synth->end) {
+      synth->active = false;
     }
 
-    wave->pt += wave->pitch;
+    synth->pt += synth->pitch;
 
-    if (wave->pt > SAMPLE_RATE)
-      wave->pt -= SAMPLE_RATE;
+    if (synth->pt > SAMPLE_RATE)
+      synth->pt -= SAMPLE_RATE;
 
-    wave->now++;
+    synth->now++;
   } else {
-    WaveEnd(wave);
+    synth->active = false;
   }
 
   return v;
+}
+
+bool SynthIsActive(size_t num) {
+  return Hardware[num].active;
 }
 
 float Saw(float t) {
@@ -299,27 +316,22 @@ static int PlayYamaCallback(const void *inputBuffer,
                             PaStreamCallbackFlags statusFlags,
                             void *userData)
 {
-  PlayerT *player = (PlayerT *)userData;
   float *out = (float*)outputBuffer;
-  size_t i;
+  size_t i, j;
 
   for (i = 0; i < framesPerBuffer; i++) {
-    ChannelT *channel = &player->channel[0];
-    SoundT *sound = &player->sound[0];
+    float s = 0.0;
 
-    if (channel->played) {
-      int n = (channel->frameNum + i) % sound->frames;
-
-      *out++ = sound->data[n]; /* left */
-      *out++ = sound->data[n]; /* right */
-    } else {
-      *out++ = 0.0f;  /* left */
-      *out++ = 0.0f;  /* right */
+    for (j = 0; j < HW_CHANNELS; j++) {
+      if (SynthIsActive(j))
+        s += SynthNextSample(j);
     }
-  }
 
-  player->channel[0].frameNum =
-      (player->channel[0].frameNum + framesPerBuffer) % player->sound[0].frames;
+    s *= 1.0 / HW_CHANNELS;
+      
+    *out++ = s; /* left */
+    *out++ = s; /* right */
+  }
 
   return 0;
 }
@@ -343,7 +355,7 @@ static void SigIntHandler(int signo) {
 }
 
 int main(int argc, char *argv[]) {
-  PlayerT *player = NULL;
+  HardwareInit();
 
   /* initialize random number generator */
   srand48(time(NULL));
@@ -355,19 +367,27 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, SigIntHandler);
 
   /* load music file from disk */
-  if (argc > 1)
-    player = LoadYama(argv[1]); 
-
-  if (player) {
+  {
     PaStream *stream;
-
-    player->channel[0].played = true;
+    int i = 0;
 
     Pa_NoFail(Pa_Initialize());
     Pa_NoFail(Pa_OpenDefaultStream(&stream, 0, 2, paFloat32, SAMPLE_RATE, 256,
-                                   PlayYamaCallback, (void *)player));
+                                   PlayYamaCallback, NULL));
     Pa_NoFail(Pa_StartStream(stream));
-    Pa_Sleep(NUM_SECONDS * 1000);
+
+    while (!ExitRequest) {
+      SynthSet(0, Sine, (i & 1) ? 440 : 220, 1.0);
+      SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
+      SynthStart(0);
+
+      SynthSet(1, Square, (i & 1) ? 330 : 660, 0.5);
+      SynthStart(1);
+
+      Pa_Sleep(1000);
+      i++;
+    }
+
     printf("Quitting%s.\n", ExitRequest ? " by user request" : "");
     Pa_NoFail(Pa_StopStream(stream));
     Pa_NoFail(Pa_CloseStream(stream));
