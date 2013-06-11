@@ -9,16 +9,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/time.h>
-#include <time.h>
-#include <unistd.h>
 
 #include <portaudio.h>
 #include <samplerate.h>
 
 typedef struct timeval timeval_t;
-typedef struct itimerval itimerval_t;
 
 #define SAMPLE_RATE 44100
 #define NUM_SECONDS 10
@@ -432,15 +428,13 @@ bool PlayerOneStep(PlayerT *player, timeval_t *wakeup) {
         if (note->pitch)
           SynthPlay(event->channel, note->pitch, note->length);
 
-        {
-          float l_int = trunc(note->length);
-          float l_frac = note->length - l_int;
-          struct timeval length = { (int)l_int, (int)(l_frac * 1000000) };
+        float l_int = trunc(note->length);
+        float l_frac = note->length - l_int;
+        struct timeval length = { (int)l_int, (int)(l_frac * 1000000) };
 
-          event->type = EV_WAIT;
-          memcpy(&event->wait.start, &now, sizeof(timeval_t));
-          timeradd(&now, &length, &event->wait.stop);
-        }
+        event->type = EV_WAIT;
+        memcpy(&event->wait.start, &now, sizeof(timeval_t));
+        timeradd(&now, &length, &event->wait.stop);
       } else {
         DEBUG("ch %zd: finished", event->channel);
         event->type = EV_IGNORE;
@@ -482,7 +476,7 @@ void PlayerRun(PlayerT *player) {
     DEBUG("wake up in : %ld:%.6d", interval.tv_sec, interval.tv_usec);
 
     while (select(0, NULL, NULL, NULL, &interval) == -1) {
-      DEBUG("spurious wake up: %s", strerror(errno));
+      DEBUG("Spurious wake up: %s!", strerror(errno));
     }
   }
 }
