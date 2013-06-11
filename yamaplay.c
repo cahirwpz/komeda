@@ -2,20 +2,29 @@
 #include <assert.h>
 #include <math.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <portaudio.h>
 #include <samplerate.h>
 
+typedef struct timeval timeval_t;
+typedef struct itimerval itimerval_t;
+
 #define SAMPLE_RATE 44100
 #define NUM_SECONDS 10
 
+static volatile bool ExitRequest = false;
+
+#if 0
 typedef struct Sound {
   size_t frames;
   float  *data;
@@ -49,11 +58,13 @@ typedef struct Registers {
   uint8_t  *branch;
   uint8_t  counter;
 } RegistersT;
+#endif
 
 /*
  * Raw file handling. Byte ordering is big-endian.
  */
 
+#if 0
 int8_t ReadInt8(FILE *file) {
   int8_t i;
   fread(&i, sizeof(i), 1, file);
@@ -75,11 +86,13 @@ int32_t ReadInt32(FILE *file) {
 void ReadBytes(FILE *file, void *data, size_t length) {
   fread(data, length, 1, file);
 }
+#endif
 
 /*
  * Read Yama binary file structures.
  */
 
+#if 0
 void ReadYamaTracks(FILE *file, PlayerT *player) {
   ChannelT *channel;
   int i, num;
@@ -148,6 +161,7 @@ PlayerT *LoadYama(const char *path) {
 
   return player;
 }
+#endif
 
 /*
  * Emulate hardware 2-channel direct sound synthesis.
@@ -174,19 +188,11 @@ void HardwareInit() {
   bzero(&Hardware, sizeof(Hardware));
 }
 
-/*
- * @pitch: in Hertz
- * @length: in seconds
- */
-void SynthSet(size_t num, float (*osc)(float), size_t pitch, float length) {
+void SynthSet(size_t num, float (*osc)(float)) {
   SynthT *synth = &Hardware[num];
 
-  synth->end = SAMPLE_RATE * length;
-  synth->pitch = pitch;
   synth->osc = osc;
-
   synth->active = false;
-  synth->adsr.active = false;
 }
 
 void SynthSetADSR(size_t num, float attack, float decay, float sustain, float release) {
@@ -201,12 +207,20 @@ void SynthSetADSR(size_t num, float attack, float decay, float sustain, float re
   synth->adsr.active = true;
 }
 
-void SynthStart(size_t num) {
+void SynthClearADSR(size_t num) {
+  SynthT *synth = &Hardware[num];
+
+  synth->adsr.active = false;
+}
+
+void SynthPlay(size_t num, size_t pitch, float length) {
   SynthT *synth = &Hardware[num];
 
   synth->now = 0;
   synth->pt = 0;
   synth->active = true;
+  synth->end = SAMPLE_RATE * length;
+  synth->pitch = pitch;
 }
 
 float ADSR(SynthT *synth) {
@@ -306,6 +320,156 @@ float Noise(float t) {
 }
 
 /*
+ * Simple channel handling.
+ */
+
+typedef struct Note {
+  size_t pitch;  /* in hertz, 0 => rest*/
+  float  length; /* in seconds, 0 => end */
+} NoteT;
+
+typedef struct Channel {
+  size_t current;
+  NoteT note[0];
+} ChannelT;
+
+NoteT *ChannelNextNote(ChannelT *channel) {
+  NoteT *note = &channel->note[channel->current];
+
+  if (note->length == 0.0)
+    return NULL;
+
+  channel->current++;
+  return note;
+}
+
+/*
+ * Blah.
+ */
+
+typedef enum { EV_IGNORE = 0, EV_FETCH, EV_WAIT, EV_LAST } EventTypeT;
+
+typedef struct Event {
+  EventTypeT type;
+  ssize_t channel;
+
+  union {
+    struct {
+      timeval_t start;
+      timeval_t stop;
+    } wait;
+  };
+} EventT;
+
+#define MAX_EVENT_NUM (HW_CHANNELS * 2)
+
+typedef struct Player {
+  ChannelT *channel[HW_CHANNELS];
+  EventT queue[MAX_EVENT_NUM];
+} PlayerT;
+
+void PlayerInit(PlayerT *player, size_t channels, ...) {
+  va_list ap;
+  int i;
+
+  bzero(player, sizeof(PlayerT));
+
+  va_start(ap, channels);
+
+  for (i = 0; i < channels; i++) {
+    player->channel[i] = va_arg(ap, ChannelT *);
+
+    player->queue[i].type = EV_FETCH;
+    player->queue[i].channel = i;
+  }
+
+  va_end(ap);
+}
+
+
+/*
+ * Returns the ''timeval'' when next event should be scheduled.  If returns
+ * false then no further events are expected.
+ */
+bool PlayerOneStep(PlayerT *player, timeval_t *wakeup) {
+  /*
+   * This routine doesn't use any O(log n) data structure, because the queue is
+   * really short.
+   */
+  timeval_t now;
+  int i;
+
+  gettimeofday(&now, NULL);
+
+  /* clean up expired waits */
+  for (i = 0; i < MAX_EVENT_NUM; i++) {
+    EventT *event = &player->queue[i];
+
+    if (event->type == EV_WAIT)
+      if (timercmp(&event->wait.stop, &now, <))
+        event->type = EV_FETCH;
+  }
+
+  /* fetch data from channels */
+  for (i = 0; i < MAX_EVENT_NUM; i++) {
+    EventT *event = &player->queue[i];
+
+    if (event->type == EV_FETCH) {
+      NoteT *note = ChannelNextNote(player->channel[event->channel]);
+
+      if (note->pitch)
+        SynthPlay(event->channel, note->pitch, note->length);
+
+      if (note->length) {
+        float l_int = trunc(note->length);
+        float l_frac = note->length - l_int;
+        struct timeval length = { (int)l_int, (int)(l_frac * 1000000) };
+
+        event->type = EV_WAIT;
+        memcpy(&event->wait.start, &now, sizeof(timeval_t));
+        timeradd(&now, &length, &event->wait.stop);
+      } else {
+        event->type = EV_IGNORE;
+      }
+    }
+  }
+
+  /* set up timer */
+  bool found_next = false;
+
+  memcpy(wakeup, &now, sizeof(timeval_t));
+  wakeup->tv_sec += 60*60*24*365;  /* one year is large enough ;-) */
+
+  for (i = 0; i < MAX_EVENT_NUM; i++) {
+    EventT *event = &player->queue[i];
+
+    if (event->type == EV_WAIT) {
+      if (timercmp(&event->wait.stop, wakeup, <)) {
+        memcpy(wakeup, &event->wait.stop, sizeof(timeval_t));
+        found_next = true;
+      }
+    }
+  }
+
+  return found_next;
+}
+
+void PlayerRun(PlayerT *player) {
+  struct timeval now, wakeup;
+
+  while (!ExitRequest && PlayerOneStep(player, &wakeup)) {
+    itimerval_t interval;
+
+    bzero(&interval, sizeof(interval));
+
+    gettimeofday(&now, NULL);
+    timersub(&wakeup, &now, &interval.it_value);
+    setitimer(ITIMER_REAL, &interval, NULL);
+    pause();
+  }
+}
+
+/*
  * Playback routines.
  */
 
@@ -347,8 +511,6 @@ void Pa_NoFail(PaError err) {
   }
 }
 
-static bool ExitRequest = false;
-
 static void SigIntHandler(int signo) {
   ExitRequest = true;
   signal(SIGINT, SIG_DFL);
@@ -376,13 +538,13 @@ int main(int argc, char *argv[]) {
                                    PlayYamaCallback, NULL));
     Pa_NoFail(Pa_StartStream(stream));
 
-    while (!ExitRequest) {
-      SynthSet(0, Sine, (i & 1) ? 440 : 220, 1.0);
-      SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
-      SynthStart(0);
+    SynthSet(0, Sine);
+    SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
+    SynthSet(1, Square);
 
-      SynthSet(1, Square, (i & 1) ? 330 : 660, 0.5);
-      SynthStart(1);
+    while (!ExitRequest) {
+      SynthPlay(0, (i & 1) ? 440 : 220, 1.0);
+      SynthPlay(1, (i & 1) ? 330 : 660, 0.5);
 
       Pa_Sleep(1000);
       i++;
