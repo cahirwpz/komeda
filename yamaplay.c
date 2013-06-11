@@ -423,10 +423,12 @@ bool PlayerOneStep(PlayerT *player, timeval_t *wakeup) {
       NoteT *note = ChannelNextNote(player->channel[event->channel]);
 
       if (note) {
-        DEBUG("ch %zd: fetch (%zd, %f)", event->channel, note->pitch, note->length);
-
-        if (note->pitch)
+        if (note->pitch) {
+          DEBUG("ch %zd: play (%zd, %f)", event->channel, note->pitch, note->length);
           SynthPlay(event->channel, note->pitch, note->length);
+        } else {
+          DEBUG("ch %zd: rest (%f)", event->channel, note->length);
+        }
 
         float l_int = trunc(note->length);
         float l_frac = note->length - l_int;
