@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
 #include <math.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -21,6 +22,12 @@ typedef struct itimerval itimerval_t;
 
 #define SAMPLE_RATE 44100
 #define NUM_SECONDS 10
+
+#ifndef NDEBUG
+#define DEBUG(fmt, ...) fprintf(stderr, fmt "\n", __VA_ARGS__)
+#else
+#define DEBUG(fmt, ...)
+#endif
 
 static volatile bool ExitRequest = false;
 
@@ -330,7 +337,7 @@ typedef struct Note {
 
 typedef struct Channel {
   size_t current;
-  NoteT note[0];
+  NoteT note[];
 } ChannelT;
 
 NoteT *ChannelNextNote(ChannelT *channel) {
@@ -406,8 +413,10 @@ bool PlayerOneStep(PlayerT *player, timeval_t *wakeup) {
     EventT *event = &player->queue[i];
 
     if (event->type == EV_WAIT)
-      if (timercmp(&event->wait.stop, &now, <))
+      if (timercmp(&event->wait.stop, &now, <)) {
         event->type = EV_FETCH;
+        DEBUG("ch %zd: wait => fetch", event->channel);
+      }
   }
 
   /* fetch data from channels */
@@ -417,18 +426,23 @@ bool PlayerOneStep(PlayerT *player, timeval_t *wakeup) {
     if (event->type == EV_FETCH) {
       NoteT *note = ChannelNextNote(player->channel[event->channel]);
 
-      if (note->pitch)
-        SynthPlay(event->channel, note->pitch, note->length);
+      if (note) {
+        DEBUG("ch %zd: fetch (%zd, %f)", event->channel, note->pitch, note->length);
 
-      if (note->length) {
-        float l_int = trunc(note->length);
-        float l_frac = note->length - l_int;
-        struct timeval length = { (int)l_int, (int)(l_frac * 1000000) };
+        if (note->pitch)
+          SynthPlay(event->channel, note->pitch, note->length);
 
-        event->type = EV_WAIT;
-        memcpy(&event->wait.start, &now, sizeof(timeval_t));
-        timeradd(&now, &length, &event->wait.stop);
+        {
+          float l_int = trunc(note->length);
+          float l_frac = note->length - l_int;
+          struct timeval length = { (int)l_int, (int)(l_frac * 1000000) };
+
+          event->type = EV_WAIT;
+          memcpy(&event->wait.start, &now, sizeof(timeval_t));
+          timeradd(&now, &length, &event->wait.stop);
+        }
       } else {
+        DEBUG("ch %zd: finished", event->channel);
         event->type = EV_IGNORE;
       }
     }
@@ -458,14 +472,18 @@ void PlayerRun(PlayerT *player) {
   struct timeval now, wakeup;
 
   while (!ExitRequest && PlayerOneStep(player, &wakeup)) {
-    itimerval_t interval;
+    timeval_t interval;
 
     bzero(&interval, sizeof(interval));
 
     gettimeofday(&now, NULL);
-    timersub(&wakeup, &now, &interval.it_value);
-    setitimer(ITIMER_REAL, &interval, NULL);
-    pause();
+    timersub(&wakeup, &now, &interval);
+
+    DEBUG("wake up in : %ld:%.6d", interval.tv_sec, interval.tv_usec);
+
+    while (select(0, NULL, NULL, NULL, &interval) == -1) {
+      DEBUG("spurious wake up: %s", strerror(errno));
+    }
   }
 }
 
@@ -516,6 +534,9 @@ static void SigIntHandler(int signo) {
   signal(SIGINT, SIG_DFL);
 }
 
+ChannelT channel0 = { 0, {{440, 1}, {0, 0.5}, {660, 1.5}, {330, 2}, {0, 0}} };
+ChannelT channel1 = { 0, {{800, 1}, {600, 1}, {800, 1}, {600, 1}, {800, 1}, {0, 0}} };
+
 int main(int argc, char *argv[]) {
   HardwareInit();
 
@@ -531,23 +552,21 @@ int main(int argc, char *argv[]) {
   /* load music file from disk */
   {
     PaStream *stream;
-    int i = 0;
 
     Pa_NoFail(Pa_Initialize());
     Pa_NoFail(Pa_OpenDefaultStream(&stream, 0, 2, paFloat32, SAMPLE_RATE, 256,
                                    PlayYamaCallback, NULL));
     Pa_NoFail(Pa_StartStream(stream));
 
-    SynthSet(0, Sine);
-    SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
-    SynthSet(1, Square);
+    {
+      PlayerT player;
+      PlayerInit(&player, HW_CHANNELS, &channel0, &channel1);
 
-    while (!ExitRequest) {
-      SynthPlay(0, (i & 1) ? 440 : 220, 1.0);
-      SynthPlay(1, (i & 1) ? 330 : 660, 0.5);
+      SynthSet(0, Sine);
+      SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
+      SynthSet(1, Square);
 
-      Pa_Sleep(1000);
-      i++;
+      PlayerRun(&player);
     }
 
     printf("Quitting%s.\n", ExitRequest ? " by user request" : "");
