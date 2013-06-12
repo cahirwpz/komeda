@@ -5,11 +5,29 @@
 \usepackage[english]{babel}
 \usepackage{cite}
 \usepackage{listings}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{caption}
+
+\setdescription{leftmargin=0cm}
+
+\captionsetup[lstlisting]{
+  labelfont={bf},
+  textfont={it},
+  singlelinecheck=false,
+  justification=centering,
+  font={normal}
+}
 
 \lstset{
   basicstyle=\small\ttfamily,
-  captionpos=b
+  captionpos=b,
+  frame=single,
+  xleftmargin=2mm,
+  xrightmargin=2mm
 }
+
+\hyphenation{Ko-me-da}
 
 %%%%%%%%%%%%%%%%%%%%%%%% Some useful packages %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%% See related documentation %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -122,25 +140,29 @@ portable virtual machine and module system.
 
 \section{Introduction}
 \label{sec:introduction}
-Artists creating music installations  have somewhat limited options for platform running generative software.
-Desktop or laptop computers can be to obstructive to the visual and spatial form of the installation.
-The mobile solutions (phones, tablets etc.) aren't suited for this application - problems with power and heat, lack of
-easy way to incorporate external sensors and output devices makes it somewhat limited for installations
- Thus the most viable choice is
-apparently to use small embedded systems, which could be easily built into both
-static and movable parts of an installation. Such systems should be based on
-affordable components and be expandable with various sensors and output
-devices. Another conceivably useful feature is mutual communication between
-system components. Hardware that matches the description above already exists,
-but it's not backed up by good software framework, that enables easy creation
-of musical applications.
+We believe that artists creating music installations are limited by the choice
+of platforms that can run their software.  Personal computers, either desktops
+or laptops, can be too obstructive to the visual and spatial form of an
+installation.  Mobile devices (phones, tablets etc.) are not well suited for
+this purpose -- problems like: device cost, replaceability, complex software
+stack, limited battery life, difficulties with expandability (i.e. no easy way
+to add custom external sensors and output devices) don't make them a great
+choice.  Apparently the most viable option is to use small embedded systems,
+which could be easily incorporated into both static and movable parts of a
+music installation.  Such systems should be build upon affordable components
+and be easily expandable with peripherals.  If we allow to build complex
+systems out of those small devices, then obviously useful feature is mutual
+communication between the components -- allowing artists to play with the idea
+of distributed music generation.  Hardware that matches the description above
+already exists, but it's not backed up by solid software framework, that
+enables easy creation of musical applications.
 
 The platform should include:
 \begin{itemize}
   \item music notation language,
   \item hardware independent binary representation,
   \item portable virtual machine capable of music playback,
-  \item hardware communication protocol,
+  \item wireless communication protocol,
   \item interface for sensors and output devices,
   \item support for music generation routines.
 \end{itemize}
@@ -181,14 +203,18 @@ concepts:
 \begin{itemize}
   \item music split into parts (i.e. patterns, phrases, choruses),
   \item rich structure of music score (incl. loops, repetitions, alternatives),
-  \item playback of score fragment in modified context (i.e.~transposition,
-    volume change),
+  \item playback of score fragment in modified context \\*
+    (i.e.~transposition, volume change),
   \item virtual players synchronisation (e.g.~concerted transition to next
     music part), 
   \item music interaction with external world (e.g.~sensors, controllers).
 \end{itemize}
 
-Having language users without much of a former experience, we would like them to find the concepts clear and code readable. To help with adoption of Komeda, we decided to base its syntax on something widely known in both worlds of music notation and programming languages. Hence, significant number of concepts were borrowed from LilyPond \cite{lily} and Java. 
+Having language users without much of a former experience, we would like them
+to find the concepts clear and code readable. To help with adoption of Komeda,
+we decided to base its syntax on something widely known in both worlds of music
+notation and programming languages. \\* Hence, significant number of
+concepts were borrowed from LilyPond \cite{lily} and Java. 
 
 The main challenges we experienced while designing Komeda were:
 \begin{itemize}
@@ -499,14 +525,14 @@ would like to preserve are:
     instructions that can be interpreted easily on most popular embedded
     processors, which tend to have RISC-like ISAs \cite{risc}.
 
-  \item[Sizeable register file and a stack.] Komeda language is mainly oriented
-    towards expressing control flow - it is not suitable for data processing.
-    Thus, we decided to drop concept of program is memory, which anyway is a
-    scarce resource in embedded systems. Instead, we use virtual registers and
-    stack to store state of a program. The requirement for virtual stack emerged
-    as we considered situation, when a pattern invokes another pattern - in some
-    sense it mimics concept of function calls and activation records from
-    general purpose programming languages.
+  \item[Sizeable register file and a stack.] Komeda language is \\* mainly
+    oriented towards expressing control flow -- it is not suitable for data
+    processing.  Thus, we decided to drop concept of program is memory, which
+    anyway is a scarce resource in embedded systems. Instead, we use virtual
+    registers and stack to store state of a program. The requirement for
+    virtual stack emerged as we considered situation, when a pattern invokes
+    another pattern - in some sense it mimics concept of function calls and
+    activation records from general purpose programming languages.
 
   \item[Uniform size of instructions i.e. 2 bytes.] If Komeda binary
     representation is going to be interpreted in software, the interpreter must
