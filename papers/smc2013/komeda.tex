@@ -124,19 +124,19 @@
 
 \begin{abstract}
 Application of embedded systems to music installations is limited due to
-absence of convenient software development tools. This is a very unfortunate
-situation as these systems offer a set of advantages in comparison to desktop
-or laptop computers. Embedded systems are small in size therefore easier to
-incorporate into the form of the work. These devices are effortlessly
-expandable with various sensors and controllers. Moreover they are affordable,
-which creates possibility to build networks of cooperating devices.
+absence of convenient software development tools.  This is a very unfortunate
+situation as these systems offer an array of advantages over desktop or laptop
+computers.  Small size of embedded systems is a factor that makes them
+especially suitable for incorporation into various forms of art.  These devices
+are effortlessly expandable with various sensors and controllers.  Moreover
+they are affordable, which creates possibility to build networks of cooperating
+devices.
 
-In this paper we describe a design of Komeda -- the platform for interactive
-algorithmic music on embedded systems. The framework consists of language based
-on the score-with-blanks approach, the intermediate binary representation,
-portable virtual machine and module system.
+In this paper we describe the design of Komeda -- implementation platform for
+interactive algorithmic music adapted for embedded systems.  The framework
+consists of music description language, intermediate binary representation and
+portable virtual machine with user defined add-ons (aka modules).
 \end{abstract}
-%
 
 \section{Introduction}
 \label{sec:introduction}
@@ -167,8 +167,9 @@ The platform should include:
   \item support for music generation routines.
 \end{itemize}
 
-We would like to present the Komeda system, which currently only provides
-subset of mentioned features, but in the future should encompass all of them. 
+We would like to present the Komeda system, which currently provides only a
+subset of the features listed above, but in the future should encompass all of
+them. 
 
 \section{Overview} 
 \label{overview}
