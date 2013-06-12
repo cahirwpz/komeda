@@ -587,7 +587,7 @@ attached Digital-to-Analog converters.
 One of currently identified design issues is platform specific instruments
 support. For many embedded devices, especially those without D/A converter,
 implementation of DDS-based instruments is either cumbersome (complex sound encoding)
-or utterly impractical (overhead of DDS emulation too high). On the other hand,
+or utterly impractical (overhead of using PWM for DDS is too high). On the other hand,
 those devices are likely to have some native support for generation of simple
 waves, e.g. PWM-based square wave generator. Other conceivable platform
 specific instruments are external devices controlled via MIDI interface or
@@ -597,7 +597,7 @@ to another embedded device controlling servo arm playing xylophone.
 
 Extending Komeda with non-DDS instruments is not trivial and requires VM
 plug-in system. The core of the virtual machine is going to offer the same
-functionality as current version excluding PCM instruments. 
+functionality as current version excluding DDS instruments. 
 
 Basically same programming interface can be extended to modularize the system
 to greater extent.  Two more types of pluggable modules save instruments are
