@@ -133,7 +133,7 @@ audio-visual effects.  Their low price makes it affordable to build and
 experiment with networks of cooperating devices that generate music.
 
 In this paper we describe the design of Komeda -- implementation platform for
-interactive algorithmic music tailored for embedded systems.  The framework
+interactive algorithmic music tailored for embedded systems.  Our framework
 consists of music description language, intermediate binary representation and
 portable virtual machine with user defined extensions (called modules).
 \end{abstract}
@@ -149,20 +149,23 @@ stack, limited battery life, difficulties with expandability (i.e. no easy way
 to add custom external sensors and output devices) don't make them a great
 choice.  Apparently the most viable option is to use small embedded systems,
 which could be easily incorporated into both static and movable parts of a
-music installation.  Such systems should be build upon affordable components
-and be easily expandable with peripherals.  If we allow to build complex
-systems out of those small devices, then obviously useful feature is mutual
-communication between the components -- allowing artists to play with the idea
-of distributed music generation.  Hardware that matches the description above
-already exists, but it's not backed up by solid software framework, that
-enables easy creation of musical applications.
+music installation.  Such systems should be build with affordable components
+and be easily expandable with peripherals.  It is natural step forward to
+construct systems composed of handful or tens of such devices.  An artist that
+desires to explore the idea of distributed music generation should be able to
+easily expand the system with communication capabilities and protocols.
+Hardware that matches the description above already exists, but it's not backed
+up by solid software framework that enables easy creation of musical
+applications.
+
 
 Such platform should include:
 \begin{itemize}
+    \setlength{\itemsep}{0pt}
   \item music notation language,
   \item hardware independent binary representation,
-  \item portable virtual machine capable of music playback,
-  \item wireless communication protocol,
+  \item portable virtual machine capable of playing music,
+  \item communication protocol (also wireless),
   \item interface for sensors and output devices,
   \item support for music generation routines.
 \end{itemize}
@@ -183,10 +186,10 @@ addition to that the language offers a limited set of control structures,
 pattern invocation and statements that allow communication with modules.
 Modules may represent instruments, note generator algorithms, sensors, etc.
 Each module is assigned a set of parameters and actions that a user can read,
-modify or invoke respectively.  The binary representation was designed to be
+modify or invoke, respectively.  The binary representation was designed to be
 platform independent bytecode for KomedaVM.  The virtual machine provides
 player routine -- or more specifically a scheduler and driver for instrument
-modules -- and interpreter for the bytecode.
+modules -- and an interpreter for the bytecode.
 
 \section{Language}
 \label{lang}
@@ -202,6 +205,7 @@ structures and other features specific to programming languages.  We enable the
 user to express easily following concepts:
 
 \begin{itemize}
+    \setlength{\itemsep}{0pt}
   \item music organized into parts (i.e. patterns, phrases, choruses),
   \item rich structure of music score (incl. loops, repetitions, alternatives),
   \item playback of score fragment in modified context \\*
@@ -219,6 +223,7 @@ of concepts were borrowed from LilyPond \cite{lily} and Java.
 
 The main challenges we experienced while designing Komeda were:
 \begin{itemize}
+    \setlength{\itemsep}{0pt}
   \item capturing all concepts needed to represent music score unambiguously --
     i.e.~a user should be encouraged to express ideas in the least number of
     possible ways,
@@ -239,6 +244,7 @@ representation. The implementation is written in Haskell, a purely functional
 language with strong static typing. Our choice is justified by a few arguments:
 
 \begin{itemize}
+    \setlength{\itemsep}{0pt}
   \item Haskell \cite{haskell} has set of rich abstractions and expressive
     types - our code looks clear and simple, there is little verbosity or
     boilerplate code, that obliterates the ideas,
@@ -251,13 +257,13 @@ language with strong static typing. Our choice is justified by a few arguments:
 
 We choose to model the language after western music notation (with Helmholtz
 pitch notation).  It has many drawbacks, nonetheless it is the most popular
-music notation which virtually anyone can read.  We want Komeda language to be
-easy to read for every person having some experience with western music
-notation.  As we didn't try to create a music engraving language, we had some
-flexibility in implementing musical concepts. In some cases we completely
-resign from some of them -- most notable examples are key signatures, bars and
-time signatures.  Here we would like to supply couple of arguments for these
-omissions.
+music notation which virtually anyone can read.  Every person having former
+experience with western music notation should immediately recognize familiar
+structures in Komeda language.  On the other hand we didn't try to create a
+music engraving language, so we had some flexibility in implementing musical
+concepts. In some cases we completely resign from some of them -- most notable
+examples are key signatures, bars and time signatures.  Here we would like to
+supply couple of arguments for these omissions.
 
 The notion of key signature associated with tonality was made somewhat obsolete
 by atonal techniques or scales other than modes of the major system.  Moreover,
@@ -462,8 +468,7 @@ signal @StopImprovisation
 
 pattern @PatC {
   ...
-  /* for the drummer:
-     please stop improvising */
+  /* to drummer: stop improvisation! */
   notify @StopImprovisation
   ...
 }
@@ -479,17 +484,22 @@ pattern @PatD {
 
 \subsubsection{Instruments}
 
-Currently only DDS\cite{DDS} instruments are supported. 
-
-TODO
+Currently only simple DDS\cite{DDS} instruments are supported for simplicity's
+sake.  Simple DDS instrument is generated by a single oscillator (e.g.
+''sine'', ''triangle'', ''square'', ''noise'') and
+ADSR\footnote{Attack-Decay-Sustain-Release} envelope.  Such instruments can be
+supported on even the simplest hardware and are a good starting point for
+generation of more advanced sounds.
 
 \begin{lstlisting}[caption=Example voice definition]
-voice @Drum {
+voice @SomeWave = @SimpleDDS {
   @osc "sine"
-  @pitch a
   @adsr 0.1 0.1 0.8 0.9
 }
 \end{lstlisting}
+
+In the example above a new instrument is created by calling constructor of
+imported {\em SimpleDDS} module.
 
 \section{Virtual Machine}
 
@@ -637,6 +647,7 @@ beyond proposed purposes.  Two more types of pluggable modules, other than
 instruments, are envisioned: sensors and generators.
 
 \begin{itemize}
+    \setlength{\itemsep}{0pt}
   \item Sensors purpose is to measure physical quantities such as light
     intensity, magnetic field direction, temperature, etc.; and interpret them
     in a context of music. The values coming from sensors could be used to play
@@ -663,6 +674,7 @@ synthesis -- instead of just simple DDS instruments implemented as external
 modules. There are a few issues worth mentioning:
 
 \begin{itemize}
+    \setlength{\itemsep}{0pt}
   \item There is a need to extend the language to easily supply required
     synthesis arguments in a concise way.
 
@@ -707,16 +719,16 @@ number.
 
 Komeda is a complex system and describing its intricacies goes way beyond the
 scope of this paper. Instead we decided to present its philosophy and design
-decisions. We also chose to list possibilities encountered during development
+decisions. We also chose to list ideas encountered during development
 stages. We hope that people creating similar platforms will find these
 information useful.
 
 As for the future of Komeda, we hope to release a first public version in the
 next few months. As more and more planned features are being incorporated, the
-platform calls for a full evaluation in form of installation or novel
+platform calls for a full evaluation in the form of an installation or a novel
 instrument. We are going to choose several artists for cooperation. Moreover,
-we would like to reiterate some concepts from the Komeda, to provide even more
-flexible and easy to use platform.
+we would like to reiterate some concepts from the Komeda, to provide an even
+more flexible and easy to use platform.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \bibliography{komeda}
