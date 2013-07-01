@@ -8,7 +8,7 @@ OBJS = main.o synth.o interp.o player.o file.o
 all: .clang_complete kmdplay
 
 .clang_complete:
-	echo $(CFLAGS) > $@
+	echo $(CPPFLAGS) > $@
 
 kmdplay: $(OBJS)
 	$(CC) -o $@ $^ $(LDLIBS)
