@@ -61,10 +61,10 @@ typedef struct Event {
  * Player structure.
  */
 
-#define MAX_EVENT_NUM (HW_CHANNELS * 2)
+#define MAX_EVENT_NUM (HW_SYNTHS * 2)
 
 struct {
-  ChannelT *channel[HW_CHANNELS];
+  ChannelT *channel[HW_SYNTHS];
   EventT queue[MAX_EVENT_NUM];
 } Player;
 

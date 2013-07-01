@@ -11,6 +11,7 @@ all: .clang_complete kmdplay
 	echo $(CFLAGS) > $@
 
 kmdplay: main.o synth.o player.o interp.o
+	$(CC) -o $@ $^ $(LDLIBS)
 
 NODEPS := clean
 DEPFILES := $(patsubst %.o,.deps/%.P,$(OBJS))
@@ -25,9 +26,6 @@ endif
 
 %.o: %.c .deps/%.P 
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
-
-%: %.o
-	$(CC) -o $@ $^ $(LDLIBS)
 
 clean:
 	@rm -vf *.o *~

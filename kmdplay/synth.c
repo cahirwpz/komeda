@@ -25,14 +25,7 @@ typedef struct Synth {
   } adsr;
 } SynthT;
 
-static SynthT Hardware[HW_CHANNELS];
-
-void SynthInit() {
-  bzero(&Hardware, sizeof(SynthT) * HW_CHANNELS);
-
-  /* initialize random number generator */
-  srand48(time(NULL));
-}
+static SynthT Hardware[HW_SYNTHS];
 
 void SynthSetADSR(size_t num, float attack, float decay, float sustain, float release) {
   SynthT *synth = &Hardware[num];
@@ -100,7 +93,7 @@ static float SynthNextSample(size_t num) {
   float v = 0.0;
 
   if (synth->active) {
-    float pt = synth->pt / (float)SAMPLE_RATE;
+    float pt = (float)synth->pt / (float)SAMPLE_RATE;
 
     v = synth->osc(pt);
 
@@ -186,12 +179,12 @@ static int PlayCallback(const void *inputBuffer,
   for (i = 0; i < framesPerBuffer; i++) {
     float s = 0.0;
 
-    for (j = 0; j < HW_CHANNELS; j++) {
+    for (j = 0; j < HW_SYNTHS; j++) {
       if (SynthIsActive(j))
         s += SynthNextSample(j);
     }
 
-    s *= 1.0 / HW_CHANNELS;
+    s *= 1.0 / HW_SYNTHS;
       
     *out++ = s; /* left */
     *out++ = s; /* right */
@@ -210,6 +203,11 @@ static void Pa_NoFail(PaError err) {
 }
 
 void SynthStart() {
+  bzero(&Hardware, sizeof(SynthT) * HW_SYNTHS);
+
+  /* initialize random number generator */
+  srand48(time(NULL));
+
   /* print some diagnostic messages */
   fprintf(stderr, "%s\n", Pa_GetVersionText());
 
