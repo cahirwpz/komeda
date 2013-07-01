@@ -2,6 +2,7 @@
 #include <stdbool.h>
 
 #include "debug.h"
+#include "module.h"
 
 typedef struct Program {
   uint16_t cmds[0];
@@ -10,16 +11,11 @@ typedef struct Program {
 typedef struct MachineState {
 } MachineStateT;
 
-typedef struct Module {
-  uint8_t attr[8];
-  void ((*method[8])(void));
-} ModuleT;
-
 #define STACK_LENGTH 32
 
 typedef struct ChannelState {
   uint8_t regs[8];
-  ModuleT (*mods)[8];
+  ModuleT *mods;
   struct {             /* status register */
     uint8_t slurr : 1; /* slurr mode */
     uint8_t unit  : 3; /* unit length */
@@ -99,18 +95,18 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
         break;
 
       case 1: /* CMOV n:CRx, Ry */
-        ChannelSetReg(channel, y, channel->mods[n]->attr[x]);
+        ChannelSetReg(channel, y, ModuleGet(&channel->mods[n], x));
         break;
 
       case 2: /* CMOV Rx, n:CRy */
-        channel->mods[n]->attr[y] = ChannelGetReg(channel, x);
+        ModuleSet(&channel->mods[n], y, ChannelGetReg(channel, x));
         break;
 
       case 3: /* CEXG n:CRx, Ry */
         {
           uint8_t tmp = ChannelGetReg(channel, y);
-          ChannelSetReg(channel, y, channel->mods[n]->attr[x]);
-          channel->mods[n]->attr[x] = tmp;
+          ChannelSetReg(channel, y, ModuleGet(&channel->mods[n], x));
+          ModuleSet(&channel->mods[n], x, tmp);
         }
         break;
 
