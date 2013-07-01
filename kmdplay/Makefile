@@ -3,14 +3,14 @@ CPPFLAGS = $(shell pkg-config --cflags portaudio-2.0)
 CFLAGS	 = -O2 -Wall
 LDLIBS	 = $(shell pkg-config --libs portaudio-2.0)
 
-OBJS = kmdplay.o synth.o interp.o player.o
+OBJS = main.o synth.o interp.o player.o
 
 all: .clang_complete kmdplay
 
 .clang_complete:
 	echo $(CFLAGS) > $@
 
-kmdplay: kmdplay.o synth.o player.o interp.o
+kmdplay: main.o synth.o player.o interp.o
 
 NODEPS := clean
 DEPFILES := $(patsubst %.o,.deps/%.P,$(OBJS))
