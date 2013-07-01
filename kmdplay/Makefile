@@ -7,7 +7,7 @@ all::	.clang_complete kmdplay
 .clang_complete:
 	echo $(CFLAGS) > $@
 
-kmdplay: kmdplay.c
+kmdplay: kmdplay.o synth.o
 
 clean::
 	@rm -vf *.o *~
