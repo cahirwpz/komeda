@@ -1,15 +1,6 @@
-dist
-cabal-dev
 *.o
 *.hi
-*.chi
-*.chs.h
-*.wav
-*.bin
 *.swp
 *.DS_Store
 *~
-yamac
-yamaplay
-yamaplay.dSYM
-.clang_complete
+kmdc
