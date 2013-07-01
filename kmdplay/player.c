@@ -93,7 +93,7 @@ void PlayerInit(size_t channels, ...) {
  * Returns the ''timeval'' when next event should be scheduled.  If returns
  * false then no further events are expected.
  */
-bool PlayerOneStep(timeval_t *wakeup) {
+static bool PlayerOneStep(timeval_t *wakeup) {
   /*
    * This routine doesn't use any O(log n) data structure, because the queue is
    * really short.
