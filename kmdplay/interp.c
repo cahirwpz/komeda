@@ -1,3 +1,8 @@
+#include <stdint.h>
+#include <stdbool.h>
+
+#include "debug.h"
+
 typedef struct Program {
   uint16_t cmds[0];
 } ProgramT;
@@ -212,5 +217,3 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
       break;
   }
 }
-
-
