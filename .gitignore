@@ -1,6 +1,4 @@
 *.o
-*.hi
 *.swp
 *.DS_Store
 *~
-kmdc
