@@ -1,5 +1,7 @@
 #include <assert.h>
 #include <math.h>
+#include <portaudio.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
 #include <sys/time.h>
@@ -161,4 +163,60 @@ float Square(float t) {
 
 float Noise(float t) {
   return drand48() * 2.0 - 1.0;
+}
+
+/*
+ * Playback routines.
+ */
+
+static int PlayCallback(const void *inputBuffer,
+                        void *outputBuffer,
+                        unsigned long framesPerBuffer,
+                        const PaStreamCallbackTimeInfo *timeInfo,
+                        PaStreamCallbackFlags statusFlags,
+                        void *userData)
+{
+  float *out = (float*)outputBuffer;
+  size_t i, j;
+
+  for (i = 0; i < framesPerBuffer; i++) {
+    float s = 0.0;
+
+    for (j = 0; j < HW_CHANNELS; j++) {
+      if (SynthIsActive(j))
+        s += SynthNextSample(j);
+    }
+
+    s *= 1.0 / HW_CHANNELS;
+      
+    *out++ = s; /* left */
+    *out++ = s; /* right */
+  }
+
+  return 0;
+}
+
+static PaStream *stream = NULL;
+
+static void Pa_NoFail(PaError err) {
+  if (err != paNoError) {
+    fprintf(stderr, "PortAudio error: %s\n", Pa_GetErrorText(err));
+    exit(EXIT_FAILURE);
+  }
+}
+
+void SynthStart() {
+  /* print some diagnostic messages */
+  fprintf(stderr, "%s\n", Pa_GetVersionText());
+
+  Pa_NoFail(Pa_Initialize());
+  Pa_NoFail(Pa_OpenDefaultStream(&stream, 0, 2, paFloat32, SAMPLE_RATE, 256,
+                                 PlayCallback, NULL));
+  Pa_NoFail(Pa_StartStream(stream));
+}
+
+void SynthStop() {
+  Pa_NoFail(Pa_StopStream(stream));
+  Pa_NoFail(Pa_CloseStream(stream));
+  Pa_NoFail(Pa_Terminate());
 }

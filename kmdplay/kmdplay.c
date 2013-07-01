@@ -11,7 +11,6 @@
 #include <string.h>
 #include <sys/time.h>
 
-#include <portaudio.h>
 #include <samplerate.h>
 
 #include "synth.h"
@@ -543,46 +542,8 @@ void PlayerRun(PlayerT *player) {
 }
 
 /*
- * Playback routines.
- */
-
-static int PlayYamaCallback(const void *inputBuffer,
-                            void *outputBuffer,
-                            unsigned long framesPerBuffer,
-                            const PaStreamCallbackTimeInfo *timeInfo,
-                            PaStreamCallbackFlags statusFlags,
-                            void *userData)
-{
-  float *out = (float*)outputBuffer;
-  size_t i, j;
-
-  for (i = 0; i < framesPerBuffer; i++) {
-    float s = 0.0;
-
-    for (j = 0; j < HW_CHANNELS; j++) {
-      if (SynthIsActive(j))
-        s += SynthNextSample(j);
-    }
-
-    s *= 1.0 / HW_CHANNELS;
-      
-    *out++ = s; /* left */
-    *out++ = s; /* right */
-  }
-
-  return 0;
-}
-
-/*
  * Main program.
  */
-
-void Pa_NoFail(PaError err) {
-  if (err != paNoError) {
-    fprintf(stderr, "PortAudio error: %s\n", Pa_GetErrorText(err));
-    exit(EXIT_FAILURE);
-  }
-}
 
 static void SigIntHandler(int signo) {
   ExitRequest = true;
@@ -595,37 +556,25 @@ ChannelT channel1 = { 0, {{800, 1}, {600, 1}, {800, 1}, {600, 1}, {800, 1}, {0, 
 int main(int argc, char *argv[]) {
   SynthInit();
 
-  /* print some diagnostic messages */
-  printf("%s\n", Pa_GetVersionText());
-
   /* set up keyboard break handler */
   signal(SIGINT, SigIntHandler);
 
   /* load music file from disk */
+  SynthStart();
+
   {
-    PaStream *stream;
+    PlayerT player;
+    PlayerInit(&player, HW_CHANNELS, &channel0, &channel1);
 
-    Pa_NoFail(Pa_Initialize());
-    Pa_NoFail(Pa_OpenDefaultStream(&stream, 0, 2, paFloat32, SAMPLE_RATE, 256,
-                                   PlayYamaCallback, NULL));
-    Pa_NoFail(Pa_StartStream(stream));
+    SynthSet(0, Sine);
+    SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
+    SynthSet(1, Square);
 
-    {
-      PlayerT player;
-      PlayerInit(&player, HW_CHANNELS, &channel0, &channel1);
-
-      SynthSet(0, Sine);
-      SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
-      SynthSet(1, Square);
-
-      PlayerRun(&player);
-    }
-
-    printf("Quitting%s.\n", ExitRequest ? " by user request" : "");
-    Pa_NoFail(Pa_StopStream(stream));
-    Pa_NoFail(Pa_CloseStream(stream));
-    Pa_NoFail(Pa_Terminate());
+    PlayerRun(&player);
   }
+
+  printf("Quitting%s.\n", ExitRequest ? " by user request" : "");
+  SynthStop();
 
   return 0;
 }

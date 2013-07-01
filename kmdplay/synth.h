@@ -8,6 +8,9 @@
 #define HW_CHANNELS 2
 
 void SynthInit();
+void SynthStart();
+void SynthStop();
+
 void SynthSet(size_t num, float (*osc)(float));
 void SynthSetADSR(size_t num, float attack, float decay, float sustain, float release);
 void SynthClearADSR(size_t num);
