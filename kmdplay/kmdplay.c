@@ -566,9 +566,9 @@ int main(int argc, char *argv[]) {
     PlayerT player;
     PlayerInit(&player, HW_CHANNELS, &channel0, &channel1);
 
-    SynthSet(0, Sine);
+    SynthSet(0, OSC_SINE);
     SynthSetADSR(0, 0.2, 0.2, 0.5, 0.3);
-    SynthSet(1, Square);
+    SynthSet(1, OSC_SQUARE);
 
     PlayerRun(&player);
   }

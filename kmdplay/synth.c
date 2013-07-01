@@ -34,13 +34,6 @@ void SynthInit() {
   srand48(time(NULL));
 }
 
-void SynthSet(size_t num, float (*osc)(float)) {
-  SynthT *synth = &Hardware[num];
-
-  synth->osc = osc;
-  synth->active = false;
-}
-
 void SynthSetADSR(size_t num, float attack, float decay, float sustain, float release) {
   SynthT *synth = &Hardware[num];
 
@@ -69,7 +62,7 @@ void SynthPlay(size_t num, size_t pitch, float length) {
   synth->pitch = pitch;
 }
 
-float ADSR(SynthT *synth) {
+static float ADSR(SynthT *synth) {
   size_t t = synth->now;
 
   /* attack? */
@@ -101,7 +94,7 @@ float ADSR(SynthT *synth) {
   return 0.0;
 }
 
-float SynthNextSample(size_t num) {
+static float SynthNextSample(size_t num) {
   SynthT *synth = &Hardware[num];
 
   float v = 0.0;
@@ -130,15 +123,15 @@ float SynthNextSample(size_t num) {
   return v;
 }
 
-bool SynthIsActive(size_t num) {
+static bool SynthIsActive(size_t num) {
   return Hardware[num].active;
 }
 
-float Saw(float t) {
+static float Saw(float t) {
   return 2.0 * t - 1.0;
 }
 
-float Triangle(float t) {
+static float Triangle(float t) {
   t = 4.0 * t;
 
   if (t >= 1.0 || t <= 3.0)
@@ -153,16 +146,27 @@ float Triangle(float t) {
   return 0.0;
 }
 
-float Sine(float t) {
+static float Sine(float t) {
   return sin(t * M_PI * 2.0);
 }
 
-float Square(float t) {
+static float Square(float t) {
   return (t < 0.5) ? -1 : 1;
 }
 
-float Noise(float t) {
+static float Noise(float t) {
   return drand48() * 2.0 - 1.0;
+}
+
+static float (*Oscillators[])(float) = {
+  &Saw, &Triangle, &Sine, &Square, &Noise
+};
+
+void SynthSet(size_t num, OscT osc) {
+  SynthT *synth = &Hardware[num];
+
+  synth->osc = Oscillators[osc];
+  synth->active = false;
 }
 
 /*
