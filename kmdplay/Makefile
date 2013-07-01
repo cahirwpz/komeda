@@ -1,16 +1,16 @@
 CC	 = clang -g
 CPPFLAGS = $(shell pkg-config --cflags portaudio-2.0)
-CFLAGS	 = -O2 -Wall
+CFLAGS	 = -Os -Wall
 LDLIBS	 = $(shell pkg-config --libs portaudio-2.0)
 
-OBJS = main.o synth.o interp.o player.o
+OBJS = main.o synth.o interp.o player.o file.o
 
 all: .clang_complete kmdplay
 
 .clang_complete:
 	echo $(CFLAGS) > $@
 
-kmdplay: main.o synth.o player.o interp.o
+kmdplay: $(OBJS)
 	$(CC) -o $@ $^ $(LDLIBS)
 
 NODEPS := clean

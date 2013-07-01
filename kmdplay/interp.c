@@ -1,61 +1,36 @@
-#include <stdint.h>
-#include <stdbool.h>
-
 #include "debug.h"
+#include "command.h"
 #include "module.h"
+#include "file.h"
 
-typedef struct Program {
-  uint16_t cmds[0];
-} ProgramT;
-
-typedef struct MachineState {
-} MachineStateT;
-
+#define REGISTERS     8
 #define STACK_LENGTH 32
 
-typedef struct ChannelState {
-  uint8_t regs[8];
-  ModuleT *mods;
+typedef struct Channel {
+  uint8_t regs[REGISTERS];
   struct {             /* status register */
     uint8_t slurr : 1; /* slurr mode */
     uint8_t unit  : 3; /* unit length */
-    uint8_t plus  : 1; /* a - b > 0 */
-    uint8_t zero  : 1; /* a - b = 0 */
+    uint8_t plus  : 1; /* y - x > 0 */
+    uint8_t zero  : 1; /* y - x = 0 */
   } sr;
   uint8_t pc;  /* program counter */
   uint8_t sp;  /* stack pointer */
   uint8_t pnr; /* procedure number register */
   uint8_t vnr; /* voice number register */
-  uint16_t *cmd;
+  ModuleT *modules;
   uint8_t stack[STACK_LENGTH];
-} ChannelStateT;
+} ChannelT;
 
-typedef enum { CMD_NONE, CMD_HALT, CMD_REST, CMD_PLAY } CommandTypeT;
-
-typedef struct Command {
-  CommandTypeT type;
-  union {
-    struct {
-      uint8_t n, d;
-    } rest;
-    struct {
-      uint8_t n, d;
-      uint8_t pitch;
-    } play;
-  };
-} CommandT;
-
-void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
-                        CommandT *command)
-{
-  uint8_t u = ((uint8_t *)channel->cmd)[0];
-  uint8_t v = ((uint8_t *)channel->cmd)[1];
+void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
+  uint16_t *cmd = &state->pattern[channel->pnr]->cmd[channel->pc++];
+  uint8_t u = ((uint8_t *)cmd)[0];
+  uint8_t v = ((uint8_t *)cmd)[1];
   uint8_t n = u & 15;
   uint8_t x = v >> 4;
   uint8_t y = v & 15;
+  uint8_t tmp;
 
-  channel->cmd++;
-  channel->pc++;
   command->type = CMD_NONE;
 
   if (u < 0x80) {
@@ -85,25 +60,28 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
         break;
 
       case 1: /* MGET n:Rx, Ry */
-        ModuleGet(&channel->mods[n], x, &channel->regs[y]);
+        ModuleGet(&channel->modules[n], command, x, &channel->regs[y]);
         break;
 
       case 2: /* MSET Rx, n:Ry */
-        ModuleSet(&channel->mods[n], y, channel->regs[x]);
+        ModuleSet(&channel->modules[n], command, y, channel->regs[x]);
         break;
 
-      case 3: /* MEXG n:Rx, Ry */
-        {
-          uint8_t tmp = channel->regs[y];
-          ModuleGet(&channel->mods[n], x, &channel->regs[y]);
-          ModuleSet(&channel->mods[n], x, tmp);
+      case 3: /* NOTE Rn:Rx:Ry*/
+        command->type = CMD_PLAY;
+        command->play.pitch = channel->regs[n];
+        command->play.n = channel->regs[x];
+        command->play.d = channel->regs[y];
+        break;
+
+      case 4: /* LOOP Rn, $v */
+        if (channel->regs[n] > 0) {
+          channel->regs[n]--;
+          channel->pc = v;
         }
         break;
 
-      case 4: /* A-form: LOOP Rn, $v */
-        break;
-
-      default: /* A-form: reserved */
+      default:
         DEBUG("Illegal command: A-form %d!", u);
         break;
     }
@@ -116,44 +94,68 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
 
     switch (u) {
       case 0: /* CALL $v */
+        channel->stack[channel->sp++] = channel->pnr;
+        channel->stack[channel->sp++] = channel->pc;
+        channel->pnr = v;
+        channel->pc = 0;
         break;
       case 1: /* JMP $v */
+        channel->pc = v;
         break;
       case 2: /* JEQ $v */
+        if (channel->sr.zero)
+          channel->pc = v;
         break;
       case 3: /* JNE $v */
+        if (!channel->sr.zero)
+          channel->pc = v;
         break;
       case 4: /* JLE $v */
+        if (channel->sr.zero && !channel->sr.plus)
+          channel->pc = v;
         break;
       case 5: /* JLT $v */
+        if (!channel->sr.plus)
+          channel->pc = v;
         break;
       case 6: /* JGE $v */
+        if (channel->sr.zero && channel->sr.plus)
+          channel->pc = v;
         break;
       case 7: /* JGT $v */
+        if (channel->sr.plus)
+          channel->pc = v;
         break;
       case 8: /* MOV Rx, Ry */
+        channel->regs[y] = channel->regs[x];
         break;
       case 9: /* EXG Rx, Ry */
+        tmp = channel->regs[y];
+        channel->regs[y] = channel->regs[x];
+        channel->regs[x] = tmp;
         break;
       case 10: /* ADD Rx, Ry */
+        channel->regs[y] += channel->regs[x];
         break;
       case 11: /* SUB Rx, Ry */
+        channel->regs[y] -= channel->regs[x];
         break;
       case 12: /* PRC Rx, Ry */
+        channel->regs[y] = (channel->regs[y] * channel->regs[x]) / 100; 
         break;
       case 13: /* CMP Rx, Ry */
+        x = channel->regs[x];
+        y = channel->regs[y];
+        channel->sr.zero = (x == y);
+        channel->sr.plus = (x < y);
         break;
-      case 14: /* PUSHM ~v */
+      case 29: /* REST Rx:Ry */
+        command->type = CMD_REST;
+        command->rest.n = channel->regs[x];
+        command->rest.d = channel->regs[y];
         break;
-      case 15: /* POPM ~v */
-        break;
-      case 16: /* CPUSHM ~v */
-        break;
-      case 17: /* CPOPM ~v */
-        break;
-      case 29: /* NOTE Rx:Ry */
-        break;
-      case 30: /* INVOKE v */
+      case 30: /* MCALL x:y */
+        ModuleCall(&channel->modules[x], command, y);
         break;
       default:
         DEBUG("Illegal command: B-form %d!", n); 
@@ -165,13 +167,17 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
   /* Handle C-form. */
   if (x < 15) {
     switch (x) {
-      case 0: /* REST Ry */
+      case 0: /* PUSH Ry */
+        channel->stack[channel->sp++] = channel->regs[y];
         break;
-      case 1: /* SIGNAL y */
+      case 1: /* POP Ry */
+        channel->regs[y] = channel->stack[--channel->sp];
         break;
-      case 2: /* SETUNIT y */
+      case 2: /* SIGNAL y */
         break;
-      case 3: /* ACTIVATE y */
+      case 3: /* SETUNIT y */
+        break;
+      case 4: /* ACTIVATE y */
         break;
       default:
         DEBUG("Illegal command: C-form %d!", x);
@@ -183,8 +189,11 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
   /* Handle D-form. */
   switch (y) {
     case 0: /* NOP */
+      /* do nothing */
       break;
     case 1: /* RET */
+      channel->pc = channel->stack[--channel->sp];
+      channel->pnr = channel->stack[--channel->sp];
       break;
     case 2: /* CLRSIG */
       break;
@@ -193,10 +202,13 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
     case 4: /* WAITSIG */
       break;
     case 5: /* SLURR ON */
+      channel->sr.slurr = true;
       break;
     case 6: /* SLURR OFF */
+      channel->sr.slurr = false;
       break;
     case 15: /* HALT */
+      command->type = CMD_HALT;
       break;
     default:
       DEBUG("Illegal command: D-form %d!", y);
