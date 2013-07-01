@@ -24,7 +24,6 @@ typedef struct ChannelState {
   } sr;
   uint8_t pc;  /* program counter */
   uint8_t sp;  /* stack pointer */
-  uint8_t aor; /* active object register */
   uint8_t pnr; /* procedure number register */
   uint8_t vnr; /* voice number register */
   uint16_t *cmd;
@@ -45,15 +44,6 @@ typedef struct Command {
     } play;
   };
 } CommandT;
-
-static inline uint8_t ChannelGetReg(ChannelStateT *channel, uint8_t reg_no) {
-  return 0;
-}
-
-static inline void ChannelSetReg(ChannelStateT *channel,
-                                 uint8_t reg_no, uint8_t value)
-{
-}
 
 void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
                         CommandT *command)
@@ -91,21 +81,21 @@ void InterpreterOneStep(MachineStateT *state, ChannelStateT *channel,
 
     switch (u) {
       case 0: /* LD #v, Rn */
-        ChannelSetReg(channel, n, v);
+        channel->regs[n] = v;
         break;
 
-      case 1: /* CMOV n:CRx, Ry */
-        ChannelSetReg(channel, y, ModuleGet(&channel->mods[n], x));
+      case 1: /* MGET n:Rx, Ry */
+        ModuleGet(&channel->mods[n], x, &channel->regs[y]);
         break;
 
-      case 2: /* CMOV Rx, n:CRy */
-        ModuleSet(&channel->mods[n], y, ChannelGetReg(channel, x));
+      case 2: /* MSET Rx, n:Ry */
+        ModuleSet(&channel->mods[n], y, channel->regs[x]);
         break;
 
-      case 3: /* CEXG n:CRx, Ry */
+      case 3: /* MEXG n:Rx, Ry */
         {
-          uint8_t tmp = ChannelGetReg(channel, y);
-          ChannelSetReg(channel, y, ModuleGet(&channel->mods[n], x));
+          uint8_t tmp = channel->regs[y];
+          ModuleGet(&channel->mods[n], x, &channel->regs[y]);
           ModuleSet(&channel->mods[n], x, tmp);
         }
         break;
