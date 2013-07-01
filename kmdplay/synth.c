@@ -93,9 +93,24 @@ static float SynthNextSample(size_t num) {
   float v = 0.0;
 
   if (synth->active) {
-    float pt = (float)synth->pt / (float)SAMPLE_RATE;
+    float t = (float)synth->pt / (float)SAMPLE_RATE;
 
-    v = synth->osc(pt);
+    /*
+     * "t" has to be within [0.0, 1.0)
+     * "i" is number of samples generated so far
+     *
+     * We know that:
+     * b) synth->pt == i * Pitch
+     * c) synth->now == i
+     * a) SamplesPerPeriod := SampleRate / Pitch
+     *
+     * t := synth->pt / SampleRate
+     *    = i * Pitch / SampleRate
+     *    = i / (SampleRate / Pitch)
+     *    = i / SamplesPerPeriod
+     */
+
+    v = synth->osc(t);
 
     if (synth->adsr.active) {
       v *= ADSR(synth);
@@ -103,8 +118,10 @@ static float SynthNextSample(size_t num) {
       synth->active = false;
     }
 
+    /* By adding the value of a LFO here we can do frequency modulation here. */
     synth->pt += synth->pitch;
 
+    /* Wrap "synth->pt" around so that "t" doesn't go above 1.0 */
     if (synth->pt > SAMPLE_RATE)
       synth->pt -= SAMPLE_RATE;
 
@@ -119,6 +136,13 @@ static float SynthNextSample(size_t num) {
 static bool SynthIsActive(size_t num) {
   return Hardware[num].active;
 }
+
+/**
+ * Oscillators.
+ *
+ * @param t: [0.0, 1.0)
+ * @returns: [-1.0, 1.0]
+ */
 
 static float Saw(float t) {
   return 2.0 * t - 1.0;
