@@ -3,7 +3,7 @@ CPPFLAGS = $(shell pkg-config --cflags portaudio-2.0)
 CFLAGS	 = -O2 -Wall
 LDLIBS	 = $(shell pkg-config --libs portaudio-2.0)
 
-OBJS = kmdplay.o synth.o
+OBJS = kmdplay.o synth.o interp.o
 
 all: .clang_complete kmdplay
 
