@@ -1,0 +1,62 @@
+// vim: ts=2 sw=2 expandtab ft=java
+
+@Trumpet = voice {
+  @file "trumpet.wav"
+}
+
+@Brass = voice {
+  @pitch a
+  @file "brass.wav"
+}
+
+@FooBar = pattern {
+  c d (e f g) b a
+}
+
+@First = pattern {
+  @tempo 150 @unit 1/8 @voice Brass
+  times 3 {
+    a8 c2 R6
+    with @tempo +20 {c d/2 e/2}
+    on 3 {c2 d4 f#2}
+  }
+}
+
+@Second = pattern {
+  @tempo 150 @unit 1/4 @voice Trumpet
+  times 5 {b, C with @transpose +3 { @FooBar } D' R}
+}
+
+channel 0 @First
+channel 1 @Second
+
+/*
+@MyGen = generator "my_generator"
+@LDR = sensor "ldr" pitch "ldr_pitch"
+
+@Test = music {
+  ...
+  take 10 @MyGen
+  ...
+}
+
+makra:
+~a = accent 10%
+~A = accent 20%
+
+synchronizacja:
+{
+  ...
+  signal 0 3 5
+  ...
+}
+
+{
+  ...
+  wait
+  ...
+  until signalled {
+    ...
+  }
+}
+*/
