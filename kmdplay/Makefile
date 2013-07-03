@@ -2,15 +2,16 @@ TOPDIR = $(realpath $(CURDIR))
 
 export TOPDIR
 
-OBJS = main.o synth.o interp.o player.o file.o
+LDLIBS = -lmodules -Lmodules
+
+OBJS = kmdplay.o synth.o interp.o player.o file.o libmodules.a
 
 all:: .clang_complete kmdplay
 
 kmdplay: $(OBJS)
-	@echo "LINK $@"
-	$(CC) -o $@ $^ $(LDLIBS)
 
 clean::
+	@make -C modules clean
 	@rm -vf kmdplay
 	@rm -vrf kmdplay.dSYM
 

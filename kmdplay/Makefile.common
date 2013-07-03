@@ -32,6 +32,12 @@ endif
 	@echo "CC   $(subst $(TOPDIR)/,,$(realpath $<))"
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
+%: %.o
+	@echo "LINK $@"
+	$(CC) $(LDFLAGS) -o $@ $(filter-out lib%.a,$^) \
+		$(foreach lib,$(patsubst lib%.a,%,$(filter lib%a,$^)),\
+		-L$(TOPDIR)/$(lib) -l$(lib)) $(LDLIBS)
+
 LIB := lib$(notdir $(CURDIR)).a
 
 $(LIB):
