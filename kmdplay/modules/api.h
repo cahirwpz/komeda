@@ -75,9 +75,11 @@ ModuleCall(ModuleT *module, CommandT *command, uint8_t method_no)
 /* Module registry entry. */
 typedef struct ModuleRegistryEntry {
   const char *name;
-  const ModuleInterfaceT *module;
+  ModuleInterfaceT *module;
 } ModuleRegistryEntryT;
 
 extern const ModuleRegistryEntryT ModuleRegistry[];
+
+ModuleInterfaceT *FindModule(const char *name);
 
 #endif
