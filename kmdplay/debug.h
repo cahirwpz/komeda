@@ -2,6 +2,7 @@
 #define __DEBUG_H__
 
 #include <assert.h>
+#include <stdlib.h>
 
 #ifndef NDEBUG
 #include <stdio.h>
@@ -9,5 +10,8 @@
 #else
 #define DEBUG(fmt, ...)
 #endif
+
+void *xmalloc(size_t size);
+void *xcalloc(size_t count, size_t size);
 
 #endif
