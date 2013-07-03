@@ -36,7 +36,7 @@ static bool ReadBytes(FILE *file, void *data, size_t length) {
  */
 
 #if 0
-static void ReadKomedaPatterns(FILE *file, PlayerT *player) {
+static void ReadPatterns(FILE *file, PlayerT *player) {
   ChannelT *channel;
   int i, num;
 
@@ -62,7 +62,6 @@ PlayerT *LoadKomedaFile(const char *path) {
 
   FILE *file = fopen(path, "rb");
   ReadYamaTracks(file, player);
-  ReadYamaSounds(file, player);
   fclose(file);
 
   return player;

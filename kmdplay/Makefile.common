@@ -1,0 +1,53 @@
+SUFFIXES += .P
+
+CC	 = clang -g
+CPPFLAGS = -I$(realpath $(TOPDIR)) $(shell pkg-config --cflags portaudio-2.0)
+CFLAGS	 = -Os -Wall
+LDLIBS	 = $(shell pkg-config --libs portaudio-2.0)
+
+ifeq ($(DEBUG), 1)
+CC += -g
+endif
+
+ifeq ($(NOLOG), 1)
+CC += -DNDEBUG
+endif
+
+NODEPS := clean all .clang_complete
+DEPFILES := $(patsubst %.o,.deps/%.P,$(OBJS))
+
+ifeq ($(words $(findstring $(MAKECMDGOALS), $(NODEPS))), 0)
+  -include $(DEPFILES)
+endif
+
+.clang_complete:
+	echo $(CPPFLAGS) > $@
+
+.deps/%.P: %.c
+	@echo "DEP  $(subst $(TOPDIR)/,,$(realpath $<))"
+	@mkdir -p .deps
+	$(CC) $(CPPFLAGS) -MM -o $@ $(realpath $<)
+
+%.o: %.c .deps/%.P 
+	@echo "CC   $(subst $(TOPDIR)/,,$(realpath $<))"
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+LIB := lib$(notdir $(CURDIR)).a
+
+$(LIB):
+	@echo "LIB  $@"
+	@ar cr $@ $^
+	@ranlib $@
+
+%.a:
+	make -C $(TOPDIR)/$(patsubst lib%.a,%,$@)
+
+clean::
+	@$(RM) -vf *.o *~ .clang_complete
+	@$(RM) -vrf .deps
+
+ifneq ($(VERBOSE), 1)
+.SILENT:
+endif
+
+.PHONY: all clean

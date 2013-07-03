@@ -4,7 +4,20 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "command.h"
+typedef enum { CMD_NONE, CMD_HALT, CMD_REST, CMD_PLAY } CommandTypeT;
+
+typedef struct Command {
+  CommandTypeT type;
+  union {
+    struct {
+      uint8_t n, d;
+    } rest;
+    struct {
+      uint8_t n, d;
+      uint8_t pitch;
+    } play;
+  };
+} CommandT;
 
 typedef struct ModuleState ModuleStateT;
 
@@ -16,7 +29,10 @@ typedef struct ModuleState ModuleStateT;
  *       stop the machine.
  */
 
+typedef enum { MOD_VOICE, MOD_SENSOR } ModuleTypeT;
+
 typedef struct ModuleInterface {
+  ModuleTypeT type;
   /* module constructor and destructor */
   ModuleStateT *(*ctor)(void);
   void (*dtor)(ModuleStateT *state);

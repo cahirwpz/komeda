@@ -1,13 +1,14 @@
 #include "debug.h"
-#include "command.h"
-#include "module.h"
 #include "file.h"
+#include "modules/api.h"
 
-#define REGISTERS     8
-#define STACK_LENGTH 32
+/* number of general purpose registers */
+#define REGS 16
+/* default stack depth */
+#define STACK_DEPTH 32
 
 typedef struct Channel {
-  uint8_t regs[REGISTERS];
+  uint8_t regs[REGS];
   struct {             /* status register */
     uint8_t slurr : 1; /* slurr mode */
     uint8_t unit  : 3; /* unit length */
@@ -18,8 +19,9 @@ typedef struct Channel {
   uint8_t sp;  /* stack pointer */
   uint8_t pnr; /* procedure number register */
   uint8_t vnr; /* voice number register */
+  uint8_t cnr; /* channel number register */
   ModuleT *modules;
-  uint8_t stack[STACK_LENGTH];
+  uint8_t stack[STACK_DEPTH];
 } ChannelT;
 
 void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
@@ -54,6 +56,7 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
   if (u < 0xc0) {
     u = (u >> 4) & 7;
 
+    /* valid range: 0..5 */
     switch (u) {
       case 0: /* LD #v, Rn */
         channel->regs[n] = v;

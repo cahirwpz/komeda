@@ -1,36 +1,19 @@
-CC	 = clang -g
-CPPFLAGS = $(shell pkg-config --cflags portaudio-2.0)
-CFLAGS	 = -Os -Wall
-LDLIBS	 = $(shell pkg-config --libs portaudio-2.0)
+TOPDIR = $(realpath $(CURDIR))
+
+export TOPDIR
 
 OBJS = main.o synth.o interp.o player.o file.o
 
-all: .clang_complete kmdplay
-
-.clang_complete:
-	echo $(CPPFLAGS) > $@
+all:: .clang_complete kmdplay
 
 kmdplay: $(OBJS)
+	@echo "LINK $@"
 	$(CC) -o $@ $^ $(LDLIBS)
 
-NODEPS := clean
-DEPFILES := $(patsubst %.o,.deps/%.P,$(OBJS))
-
-ifeq ($(words $(findstring $(MAKECMDGOALS), $(NODEPS))), 0)
-  -include $(DEPFILES)
-endif
-
-.deps/%.P: %.c
-	@mkdir -p .deps
-	$(CC) $(CPPFLAGS) -MM -o $@ $<
-
-%.o: %.c .deps/%.P 
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
-
-clean:
-	@rm -vf *.o *~
+clean::
 	@rm -vf kmdplay
-	@rm -vrf kmdplay.dSYM .deps
-	@rm -vf .clang_complete
+	@rm -vrf kmdplay.dSYM
 
-.PHONY: all clean
+include $(TOPDIR)/Makefile.common
+
+# vim: sw=8 ts=8
