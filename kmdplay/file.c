@@ -1,8 +1,11 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 
+#include "debug.h"
 #include "file.h"
+#include "interp.h"
 
 /*
  * Raw file handling. Byte ordering is big-endian.
@@ -27,36 +30,83 @@ static bool ReadLong(FILE *file, uint32_t *value_p) {
   return result;
 }
 
-static bool ReadBytes(FILE *file, void *data, size_t length) {
-  return (fread(data, length, 1, file) == length);
+static bool ReadBytes(FILE *file, size_t length, uint8_t **data_p) {
+  uint8_t *data = malloc(length);
+
+  if (fread(data, length, 1, file) == length) {
+    (*data_p) = data;
+    return true;
+  }
+
+  free(data);
+  return false;
+}
+
+static bool ReadString(FILE *file, char **string_p) {
+  uint8_t length;
+
+  return (ReadByte(file, &length) &&
+          ReadBytes(file, length, (uint8_t **)string_p));
 }
 
 /*
  * Read Komeda binary file structures.
  */
 
-#if 0
-static void ReadPatterns(FILE *file, PlayerT *player) {
-  ChannelT *channel;
-  int i, num;
-
-  player->channelNum = num = ReadInt16(file);
-  player->channel = calloc(num, sizeof(ChannelT));
-
-  channel = player->channel;
-
-  for (i = 0; i < num; i++) {
-    int16_t size = ReadInt16(file);
-    int16_t commands = ReadInt16(file);
-
-    channel[i].data = malloc(size);
-    channel[i].commands = commands;
-    ReadBytes(file, channel[i].data, size);
-
-    printf("Track %d: %zd commands (%d) bytes.\n", i, commands, size);
-  }
+static bool ReadProgram(FILE *file, ProgramT *program) {
+  return (ReadWord(file, &program->num) &&
+          ReadBytes(file, program->num * sizeof(uint16_t),
+                    (uint8_t **)&program->cmd));
 }
 
+static bool ReadModule(FILE *file, KomedaT *komeda, int n) {
+  ProgramT init;
+  char *name = NULL;
+  bool result = false;
+
+  if (ReadString(file, &name)) {
+    DEBUG("Module %d: instance of '%s'.", n, name);
+    komeda->module[n].api = FindModule(name);
+
+    if (ReadProgram(file, &init)) {
+      DEBUG("Running initialization for module %d.", n);
+      result = RunInitProgram(&init, &komeda->module[n]);
+      free(init.cmd);
+    }
+
+    free(name);
+  }
+
+  return false;
+}
+
+static bool ReadKomeda(FILE *file, KomedaT **komeda_p) {
+  size_t i;
+  uint16_t modules, programs, channels;
+
+  if (!(ReadWord(file, &modules) &&
+        ReadWord(file, &programs) &&
+        ReadWord(file, &channels)))
+    return false;
+
+  DEBUG("Komeda file (%d modules, %d programs, %d channels).",
+        modules, programs, channels);
+
+  KomedaT *komeda = CreateKomeda(modules, programs, channels);
+
+  for (i = 0; i < modules; i++)
+    if (!ReadModule(file, komeda, i))
+      return false;
+
+  for (i = 0; i < programs; i++)
+    if (!ReadProgram(file, &komeda->program[i]))
+      return false;
+
+  (*komeda_p) = komeda;
+  return true;
+}
+
+#if 0
 PlayerT *LoadKomedaFile(const char *path) {
   PlayerT *player = malloc(sizeof(PlayerT));
 

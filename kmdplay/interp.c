@@ -1,31 +1,61 @@
+#include <strings.h>
+
 #include "debug.h"
-#include "file.h"
-#include "modules/api.h"
+#include "interp.h"
 
 /* number of general purpose registers */
-#define REGS 16
+#define NO_REGS 16
 /* default stack depth */
 #define STACK_DEPTH 32
 
-typedef struct Channel {
-  uint8_t regs[REGS];
+struct Channel {
+  uint8_t regs[NO_REGS];
   struct {             /* status register */
     uint8_t slurr : 1; /* slurr mode */
     uint8_t unit  : 3; /* unit length */
     uint8_t plus  : 1; /* y - x > 0 */
     uint8_t zero  : 1; /* y - x = 0 */
   } sr;
-  uint8_t pc;  /* program counter */
-  uint8_t sp;  /* stack pointer */
-  uint8_t pnr; /* procedure number register */
-  uint8_t vnr; /* voice number register */
-  uint8_t cnr; /* channel number register */
-  ModuleT *modules;
+  uint8_t pc; /* program counter */
+  uint8_t sp; /* stack pointer */
+  uint8_t pr; /* procedure number register */
+  uint8_t mr; /* active module number register */
+  uint8_t vr; /* voice number register */
   uint8_t stack[STACK_DEPTH];
-} ChannelT;
+};
 
-void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
-  uint16_t *cmd = &state->pattern[channel->pnr]->cmd[channel->pc++];
+KomedaT *CreateKomeda(size_t modules, size_t programs, size_t channels) {
+  KomedaT *komeda = xcalloc(1, sizeof(KomedaT));
+
+  komeda->no_modules = modules;
+  komeda->no_programs = programs;
+  komeda->no_channels = channels;
+  komeda->module = xcalloc(modules, sizeof(ModuleT));
+  komeda->program = xcalloc(programs, sizeof(ProgramT));
+  komeda->channel = xcalloc(channels, sizeof(ChannelT));
+
+  return komeda;
+}
+
+void FreeKomeda(KomedaT *komeda) {
+  int i;
+
+  for (i = 0; i < komeda->no_programs; i++)
+    free(komeda->program[i].cmd);
+  free(komeda->program);
+
+  for (i = 0; i < komeda->no_modules; i++)
+    ; /* call destructor ? */
+
+  free(komeda->channel);
+  free(komeda->program);
+  free(komeda);
+}
+
+void InterpreterOneStep(ProgramT *program, ChannelT *channel,
+                        ModuleT *module, CommandT *command)
+{
+  uint16_t *cmd = &program->cmd[channel->pc++];
   uint8_t u = ((uint8_t *)cmd)[0];
   uint8_t v = ((uint8_t *)cmd)[1];
   uint8_t n = u & 15;
@@ -33,7 +63,7 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
   uint8_t y = v & 15;
   uint8_t tmp;
 
-  command->type = CMD_NONE;
+  command->type = CMD_CONTINUE;
 
   if (u < 0x80) {
     /* NOTE: 1ppp pppp nnnn dddd */
@@ -62,22 +92,14 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
         channel->regs[n] = v;
         break;
 
-      case 1: /* MGET n:Rx, Ry */
-        ModuleGet(&channel->modules[n], command, x, &channel->regs[y]);
-        break;
-
-      case 2: /* MSET Rx, n:Ry */
-        ModuleSet(&channel->modules[n], command, y, channel->regs[x]);
-        break;
-
-      case 3: /* NOTE Rn:Rx:Ry*/
+      case 1: /* NOTE Rn:Rx:Ry*/
         command->type = CMD_PLAY;
         command->play.pitch = channel->regs[n];
         command->play.n = channel->regs[x];
         command->play.d = channel->regs[y];
         break;
 
-      case 4: /* LOOP Rn, $v */
+      case 2: /* LOOP Rn, $v */
         if (channel->regs[n] > 0) {
           channel->regs[n]--;
           channel->pc = v;
@@ -97,9 +119,9 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
 
     switch (u) {
       case 0: /* CALL $v */
-        channel->stack[channel->sp++] = channel->pnr;
+        channel->stack[channel->sp++] = channel->pr;
         channel->stack[channel->sp++] = channel->pc;
-        channel->pnr = v;
+        channel->pr = v;
         channel->pc = 0;
         break;
       case 1: /* JMP $v */
@@ -152,13 +174,16 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
         channel->sr.zero = (x == y);
         channel->sr.plus = (x < y);
         break;
-      case 29: /* REST Rx:Ry */
+      case 27: /* REST Rx:Ry */
         command->type = CMD_REST;
         command->rest.n = channel->regs[x];
         command->rest.d = channel->regs[y];
         break;
-      case 30: /* MCALL x:y */
-        ModuleCall(&channel->modules[x], command, y);
+      case 28: /* MGET mr:Rx, Ry */
+        ModuleGet(module, command, x, &channel->regs[y]);
+        break;
+      case 29: /* MSET Rx, mr:Ry */
+        ModuleSet(module, command, y, channel->regs[x]);
         break;
       default:
         DEBUG("Illegal command: B-form %d!", n); 
@@ -176,11 +201,8 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
       case 1: /* POP Ry */
         channel->regs[y] = channel->stack[--channel->sp];
         break;
-      case 2: /* SIGNAL y */
-        break;
-      case 3: /* SETUNIT y */
-        break;
-      case 4: /* ACTIVATE y */
+      case 2: /* MCALL y */
+        ModuleCall(module, command, y);
         break;
       default:
         DEBUG("Illegal command: C-form %d!", x);
@@ -196,13 +218,7 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
       break;
     case 1: /* RET */
       channel->pc = channel->stack[--channel->sp];
-      channel->pnr = channel->stack[--channel->sp];
-      break;
-    case 2: /* CLRSIG */
-      break;
-    case 3: /* CHKSIG */
-      break;
-    case 4: /* WAITSIG */
+      channel->pr = channel->stack[--channel->sp];
       break;
     case 5: /* SLURR ON */
       channel->sr.slurr = true;
@@ -217,4 +233,29 @@ void InterpreterOneStep(MachineT *state, ChannelT *channel, CommandT *command) {
       DEBUG("Illegal command: D-form %d!", y);
       break;
   }
+}
+
+/*
+ * These are completely broken for now.
+ */
+
+void RunChannelProgram(KomedaT *komeda, int num) {
+  ChannelT *channel = &komeda->channel[num];
+  ModuleT *module = &komeda->module[channel->mr];
+  ProgramT *program = &komeda->program[channel->pr];
+  CommandT *command = NULL;
+  
+  InterpreterOneStep(program, channel, module, command);
+}
+
+bool RunInitProgram(ProgramT *program, ModuleT *module) {
+  ChannelT channel;
+  CommandT command;
+
+  bzero(&channel, sizeof(channel));
+  bzero(&command, sizeof(command));
+  
+  InterpreterOneStep(program, &channel, module, &command);
+
+  return true;
 }
