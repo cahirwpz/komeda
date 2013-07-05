@@ -11,6 +11,13 @@
 /*
  * Emulate hardware N-channel direct sound synthesis.
  */
+
+typedef struct Adsr {
+  bool active;
+  size_t attack, decay, release;
+  float sustain;
+} AdsrT;
+
 typedef struct Synth {
   volatile bool active;
 
@@ -18,17 +25,21 @@ typedef struct Synth {
   size_t pt, pitch;
   float (*osc)(float);
 
-  struct {
-    bool active;
-    size_t attack, decay, release;
-    float sustain;
-    float attack_level;
-  } adsr;
+  float volume;
+  AdsrT adsr;
 } SynthT;
 
 static SynthT Hardware[HW_SYNTHS];
 
-void SynthSetADSR(size_t num, float attack, float attack_level, float decay, float sustain, float release) {
+void SynthVolume(size_t num, float volume) {
+  SynthT *synth = &Hardware[num];
+
+  synth->volume = volume;
+}
+
+void SynthSetADSR(size_t num,
+                  float attack, float decay, float sustain, float release)
+{
   SynthT *synth = &Hardware[num];
 
   assert(sustain > 0.0 && sustain < 1.0);
@@ -36,7 +47,6 @@ void SynthSetADSR(size_t num, float attack, float attack_level, float decay, flo
   synth->adsr.attack = attack * SAMPLE_RATE;
   synth->adsr.decay = decay * SAMPLE_RATE;
   synth->adsr.sustain = sustain;
-  synth->adsr.attack_level = attack_level;
   synth->adsr.release = release * SAMPLE_RATE;
   synth->adsr.active = true;
 }
@@ -58,56 +68,53 @@ void SynthPlay(size_t num, size_t pitch, float length) {
 }
 
 static float ADSR(SynthT *synth) {
+  AdsrT *adsr = &synth->adsr;
   size_t t = synth->now;
+  size_t t_end = synth->end;
 
   /* attack? */
-  if (t < synth->adsr.attack)
-    return (float)t / synth->adsr.attack * synth->adsr.attack_level;
-
-  t -= synth->adsr.attack;
+  if (t < adsr->attack)
+    return (float)t / adsr->attack;
 
   /* decay? */
-  if (t < synth->adsr.decay) {
-    float tr = (float)t / synth->adsr.decay;
-    return tr * (synth->adsr.sustain - synth->adsr.attack_level) + 1.0;
+  if (t < adsr->decay + adsr->attack) {
+    float tr = (float)(t - adsr->attack) / adsr->decay;
+    return 1.0 - tr * (1.0 - adsr->sustain);
   }
 
   /* sustain? */
-  t = synth->now;
-  if (t < synth->end-synth->adsr.release)
-    return synth->adsr.sustain;
+  if (t < t_end - adsr->release)
+    return adsr->sustain;
 
-
-
-  if (t < synth->end) {
-    float tr = (float)(synth->end-t) / synth->adsr.release;
-    return synth->adsr.sustain * tr;
+  /* release? */
+  if (t < t_end) {
+    float tr = (float)(t_end - t) / adsr->release;
+    return adsr->sustain * tr;
   }
 
   /* no sound! */
   synth->active = false;
   return 0.0;
 }
+
+/* should be around 5 to 20 ms */
+#define FADE_TIME (SAMPLE_RATE / 100)
+
 static float ASR(SynthT *synth) {
   size_t t = synth->now;
-  size_t l = 0.02 * SAMPLE_RATE;
+  size_t t_end = synth->end;
+
   /* attack? */
-  if (t < l)
-    return (float)t / synth->adsr.attack;
-
-
-
+  if (t < FADE_TIME)
+    return (float)t / FADE_TIME;
 
   /* sustain? */
-  if (t < synth->end-l)
+  if (t < (t_end - FADE_TIME))
     return 1.0;
 
-
-
-  if (t < synth->end) {
-    float tr = (float)(synth->end-t) / l;
-    return  tr;
-  }
+  /* release? */
+  if (t < t_end)
+    return 1.0 - (float)(t_end - t) / FADE_TIME;
 
   /* no sound! */
   synth->active = false;
@@ -137,15 +144,8 @@ static float SynthNextSample(size_t num) {
      *    = i / SamplesPerPeriod
      */
 
-    v = synth->osc(t);
-
-    if (synth->adsr.active) {
-      v *= ADSR(synth);
-    } else
-    {
-		v*=ASR(synth);
-	}
-
+    v = synth->osc(t) * synth->volume;
+    v *= synth->adsr.active ? ADSR(synth) : ASR(synth);
 
     /* By adding the value of a LFO here we can do frequency modulation here. */
     synth->pt += synth->pitch;
@@ -212,6 +212,7 @@ void SynthSet(size_t num, OscT osc) {
   SynthT *synth = &Hardware[num];
 
   synth->osc = Oscillators[osc];
+  synth->volume = 1.0;
   synth->active = false;
 }
 

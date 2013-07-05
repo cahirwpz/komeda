@@ -176,6 +176,8 @@ bool PlayerRun() {
 
     DEBUG("wake up in : %ld:%.6d", interval.tv_sec, interval.tv_usec);
 
+    assert(interval.tv_sec >= 0 && interval.tv_usec >= 0);
+
     while (select(0, NULL, NULL, NULL, &interval) == -1) {
       DEBUG("Spurious wake up: %s!", strerror(errno));
     }

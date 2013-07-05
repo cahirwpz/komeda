@@ -10,8 +10,9 @@ int main(int argc, char *argv[]) {
 
   SynthStart();
   SynthSet(0, OSC_SINE);
-  SynthSetADSR(0, 0.2,1.0, 0.2, 0.5, 0.3);
+  SynthSetADSR(0, 0.1, 0.1, 0.5, 0.1);
   SynthSet(1, OSC_SQUARE);
+  SynthVolume(1, 0.1);
 
   bool success = PlayerRun();
 
