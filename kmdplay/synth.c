@@ -109,12 +109,12 @@ static float ASR(SynthT *synth) {
     return (float)t / FADE_TIME;
 
   /* sustain? */
-  if (t < (t_end - FADE_TIME))
+  if (t < t_end - FADE_TIME)
     return 1.0;
 
   /* release? */
   if (t < t_end)
-    return 1.0 - (float)(t_end - t) / FADE_TIME;
+    return (float)(t_end - t) / FADE_TIME;
 
   /* no sound! */
   synth->active = false;
