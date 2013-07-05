@@ -22,12 +22,13 @@ typedef struct Synth {
     bool active;
     size_t attack, decay, release;
     float sustain;
+    float attack_level;
   } adsr;
 } SynthT;
 
 static SynthT Hardware[HW_SYNTHS];
 
-void SynthSetADSR(size_t num, float attack, float decay, float sustain, float release) {
+void SynthSetADSR(size_t num, float attack, float attack_level, float decay, float sustain, float release) {
   SynthT *synth = &Hardware[num];
 
   assert(sustain > 0.0 && sustain < 1.0);
@@ -35,6 +36,7 @@ void SynthSetADSR(size_t num, float attack, float decay, float sustain, float re
   synth->adsr.attack = attack * SAMPLE_RATE;
   synth->adsr.decay = decay * SAMPLE_RATE;
   synth->adsr.sustain = sustain;
+  synth->adsr.attack_level = attack_level;
   synth->adsr.release = release * SAMPLE_RATE;
   synth->adsr.active = true;
 }
@@ -71,15 +73,14 @@ static float ADSR(SynthT *synth) {
   }
 
   /* sustain? */
-  if (synth->now < synth->end)
+  if (synth->now < synth->end-synth->adsr.release)
     return synth->adsr.sustain;
 
-  /* release? */
-  t = synth->now - synth->end;
 
-  if (t < synth->adsr.release) {
-    float tr = (float)t / synth->adsr.release;
-    return synth->adsr.sustain * (1.0 - tr);
+
+  if (t < synth->end) {
+    float tr = (float)(synth->end-t) / synth->adsr.release;
+    return synth->adsr.sustain * tr;
   }
 
   /* no sound! */
@@ -209,7 +210,7 @@ static int PlayCallback(const void *inputBuffer,
     }
 
     s *= 1.0 / HW_SYNTHS;
-      
+
     *out++ = s; /* left */
     *out++ = s; /* right */
   }
