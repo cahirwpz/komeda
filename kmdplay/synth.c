@@ -62,18 +62,19 @@ static float ADSR(SynthT *synth) {
 
   /* attack? */
   if (t < synth->adsr.attack)
-    return (float)t / synth->adsr.attack;
+    return (float)t / synth->adsr.attack * synth->adsr.attack_level;
 
   t -= synth->adsr.attack;
 
   /* decay? */
   if (t < synth->adsr.decay) {
     float tr = (float)t / synth->adsr.decay;
-    return tr * (synth->adsr.sustain - 1.0) + 1.0;
+    return tr * (synth->adsr.sustain - synth->adsr.attack_level) + 1.0;
   }
 
   /* sustain? */
-  if (synth->now < synth->end-synth->adsr.release)
+  t = synth->now;
+  if (t < synth->end-synth->adsr.release)
     return synth->adsr.sustain;
 
 
@@ -81,6 +82,31 @@ static float ADSR(SynthT *synth) {
   if (t < synth->end) {
     float tr = (float)(synth->end-t) / synth->adsr.release;
     return synth->adsr.sustain * tr;
+  }
+
+  /* no sound! */
+  synth->active = false;
+  return 0.0;
+}
+static float ASR(SynthT *synth) {
+  size_t t = synth->now;
+  size_t l = 0.02 * SAMPLE_RATE;
+  /* attack? */
+  if (t < l)
+    return (float)t / synth->adsr.attack;
+
+
+
+
+  /* sustain? */
+  if (t < synth->end-l)
+    return 1.0;
+
+
+
+  if (t < synth->end) {
+    float tr = (float)(synth->end-t) / l;
+    return  tr;
   }
 
   /* no sound! */
@@ -115,9 +141,11 @@ static float SynthNextSample(size_t num) {
 
     if (synth->adsr.active) {
       v *= ADSR(synth);
-    } else if (synth->now >= synth->end) {
-      synth->active = false;
-    }
+    } else
+    {
+		v*=ASR(synth);
+	}
+
 
     /* By adding the value of a LFO here we can do frequency modulation here. */
     synth->pt += synth->pitch;
