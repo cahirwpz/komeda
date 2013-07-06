@@ -12,8 +12,9 @@ int main(int argc, char *argv[]) {
   SynthSet(0, OSC_SINE);
   SynthSetADSR(0, 0.1, 0.1, 0.5, 0.1);
   SynthSet(1, OSC_SQUARE);
-  SynthVolume(1, 0.1);
-
+  SynthVolume(1, 0.8);
+  SynthSetLoPass(1,400);
+  SynthSetPeakEq(1,800,0.2,0.3);
   bool success = PlayerRun();
 
   printf("Quitting%s.\n", success ? "" : " by user request");

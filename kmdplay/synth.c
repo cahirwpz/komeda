@@ -87,7 +87,7 @@ void SynthSetPeakEq(size_t num,
   SynthT *synth = &Hardware[num];
 
   assert(frequency > 0.0 && frequency < SAMPLE_RATE/2);
-  float bandwidth = (float)frequency/quality;
+
   float a;
   if(gain<1)
   {
