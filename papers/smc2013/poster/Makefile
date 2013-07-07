@@ -1,11 +1,11 @@
 LATEX := latexmk -pdf
-OUTPUT := komeda.pdf
+OUTPUT := poster.pdf
 
 all: $(OUTPUT)
 
-%.pdf: %.tex %.bib
+%.pdf: %.tex
 	$(LATEX) $<
 
 clean:
 	latexmk -f -C $(OUTPUT)
-	rm -f *~ *.bbl
+	rm -f *~ *.bbl *.nav *.snm
