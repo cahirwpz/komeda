@@ -26,11 +26,20 @@ void SynthVolume(size_t num, float volume);
 void SynthSetADSR(size_t num,
                   float attack, float decay, float sustain, float release);
 void SynthClearADSR(size_t num);
-void SynthSetLoPass(size_t num,
-                  size_t cutOff);
-void SynthClearLoPass(size_t num);
-void SynthSetPeakEq(size_t num,
-                  size_t frequency, float quality, float gain);
+
+/**
+ * @param cutOff: cut-off frequency in Hertz
+ */
+void SynthSetLowPass(size_t num, size_t cutOff);
+void SynthClearLowPass(size_t num);
+
+/**
+ * Peaking equalizers are described at:
+ * https://ccrma.stanford.edu/~jos/filters/Peaking_Equalizers.html
+ *
+ * @param quality: http://en.wikipedia.org/wiki/Q_factor
+ */
+void SynthSetPeakEq(size_t num, size_t frequency, float quality, float gain);
 void SynthClearPeakEq(size_t num);
 
 #endif

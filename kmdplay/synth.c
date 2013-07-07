@@ -12,31 +12,36 @@
  * Emulate hardware N-channel direct sound synthesis.
  */
 
+/* Attack-sustain-decay-release envelope. */
 typedef struct Adsr {
   bool active;
   size_t attack, decay, release;
   float sustain;
 } AdsrT;
-typedef struct FOF {
+
+/* First order filter */
+typedef struct FOFilter {
   bool active;
-  /*non recursive*/
+  /* non recursive */
   float b0, b1;
-  /*recursive*/
+  /* recursive */
   float a1;
-  /* buffer*/
+  /* buffer */
   float x1;
   float y1;
-} FOFT;
-typedef struct SOF {
+} FOFilterT;
+
+/* Second order filter */
+typedef struct SOFilter {
   bool active;
-    /*non recursive*/
-    float b0, b1,b2;
-    /*recursive*/
-    float a1,a2;
-    /* buffer*/
+  /* non recursive */
+  float b0, b1, b2;
+  /* recursive */
+  float a1, a2;
+  /* buffer */
   float x1, x2;
   float y1, y2;
-} SOFT;
+} SOFilterT;
 
 typedef struct Synth {
   volatile bool active;
@@ -47,8 +52,8 @@ typedef struct Synth {
 
   float volume;
   AdsrT adsr;
-  FOFT lopass;
-  SOFT peakEq;
+  FOFilterT lowPass;
+  SOFilterT peakEq;
 } SynthT;
 
 static SynthT Hardware[HW_SYNTHS];
@@ -59,57 +64,59 @@ void SynthVolume(size_t num, float volume) {
   synth->volume = volume;
 }
 
-void SynthSetLoPass(size_t num,
-                  size_t cutOff)
-{
+/*
+ * Implemented as described at:
+ * http://freeverb3.sourceforge.net/iir_filter.shtml
+ */
+void SynthSetLowPass(size_t num, size_t cutOff) {
   SynthT *synth = &Hardware[num];
 
-  assert(cutOff > 0.0 && cutOff < SAMPLE_RATE/2);
+  assert(cutOff > 0 && cutOff < SAMPLE_RATE / 2);
 
-  float w = tan(M_PI*cutOff/SAMPLE_RATE);
-  float n = 1/(1+w);
-  synth->lopass.b0 = w*n;
-  /*for the low pass filter b0 and b1 are the same*/
-  synth->lopass.b1 = synth->lopass.b0;
-  synth->lopass.a1 = synth->lopass.b0-n; /*n*(w-1)*/
-  synth->lopass.x1=0;
-  synth->lopass.y1=0;
-  synth->lopass.active=true;
+  float w = tan(M_PI * cutOff / SAMPLE_RATE);
+  float n = 1.0 / (1.0 + w);
+
+  synth->lowPass.b0 = w * n;
+  /* for the low pass filter b0 and b1 are the same */
+  synth->lowPass.b1 = synth->lowPass.b0;
+  synth->lowPass.a1 = synth->lowPass.b0 - n; /* n * (w - 1) */
+  synth->lowPass.x1 = 0;
+  synth->lowPass.y1 = 0;
+  synth->lowPass.active = true;
 }
-void SynthClearLoPass(size_t num) {
+
+void SynthClearLowPass(size_t num) {
   SynthT *synth = &Hardware[num];
 
-  synth->lopass.active = false;
+  synth->lowPass.active = false;
 }
-void SynthSetPeakEq(size_t num,
-                  size_t frequency, float quality, float gain)
-{
+
+void SynthSetPeakEq(size_t num, size_t frequency, float quality, float gain) {
   SynthT *synth = &Hardware[num];
 
-  assert(frequency > 0.0 && frequency < SAMPLE_RATE/2);
+  assert(frequency > 0 && frequency < SAMPLE_RATE / 2);
 
-  float a;
-  if(gain<1)
-  {
-	  a = quality;
-	  quality=quality*gain;
-  }
+  float a = quality;
+
+  if (gain < 1.0)
+    quality *= gain;
   else
-  {
-	  a= quality/gain;
-  }
-  float w = tan(M_PI*frequency/SAMPLE_RATE);
-  float n = 1/(w*w + w/quality +1);
-  synth->peakEq.b0 = n*(w*w+w/a +1);
-  synth->peakEq.b1 = n*(w*w-1);
-  synth->peakEq.b2 = n*(w*w-w/a +1);
+    a /= gain;
+
+  float w = tan(M_PI * frequency / SAMPLE_RATE);
+  float n = 1.0 / (w * w + w / quality + 1.0);
+
+  synth->peakEq.b0 = n * (w * w + w / a + 1.0);
+  synth->peakEq.b1 = n * (w * w - 1.0);
+  synth->peakEq.b2 = n * (w * w - w / a + 1.0);
   synth->peakEq.a1 = synth->peakEq.b1;
-  synth->peakEq.a2 = n*(w*w-w/quality +1);
-  synth->peakEq.x1 = 0;
-  synth->peakEq.x2 = 0;
-  synth->peakEq.y1 = 0;
-  synth->peakEq.y2 = 0;
+  synth->peakEq.a2 = n * (w * w - w / quality + 1.0);
+  synth->peakEq.x1 = 0.0;
+  synth->peakEq.x2 = 0.0;
+  synth->peakEq.y1 = 0.0;
+  synth->peakEq.y2 = 0.0;
 }
+
 void SynthClearPeakEq(size_t num) {
   SynthT *synth = &Hardware[num];
 
@@ -145,29 +152,39 @@ void SynthPlay(size_t num, size_t pitch, float length) {
   synth->end = SAMPLE_RATE * length;
   synth->pitch = pitch;
 }
-/*if needed logic can be put into the function computing first order IIR filter
-which should get just needed FOFT structure instead of synth*/
-static float LowPassFilter(SynthT *synth, float x)
-{
-	float value;
-	value = synth->lopass.b0 *x + synth->lopass.b1 * synth->lopass.x1 + synth->lopass.a1 * synth->lopass.y1;
-	synth->lopass.x1=x;
-	synth->lopass.y1=value;
-	return value;
+
+/*
+ * If needed logic can be put into the function computing first order IIR
+ * filter which should get just needed FOFilterT structure instead of synth.
+ */
+static float LowPassFilter(SynthT *synth, float x) {
+  float value = synth->lowPass.b0 * x +
+    synth->lowPass.b1 * synth->lowPass.x1 +
+    synth->lowPass.a1 * synth->lowPass.y1;
+
+  synth->lowPass.x1 = x;
+  synth->lowPass.y1 = value;
+
+  return value;
 }
 
-/*if needed logic can be put into the function computing second order IIR filter
-which should get just needed SOFT structure instead of synth*/
-static float PeakEq(SynthT *synth, float x)
-{
-	float value;
-	value = synth->peakEq.b0 *x + synth->peakEq.b1 * synth->peakEq.x1 + synth->peakEq.b2 * synth->peakEq.x2
-			+ synth->peakEq.a1 * synth->peakEq.y1 + synth->peakEq.a2 * synth->peakEq.y2;
-	synth->peakEq.x2=synth->peakEq.x1;
-	synth->peakEq.x1=x;
-	synth->peakEq.y2=synth->peakEq.y1;
-	synth->peakEq.y1=value;
-	return value;
+/* 
+ * If needed logic can be put into the function computing second order IIR
+ * filter which should get just needed SOFilterT structure instead of synth.
+ */
+static float PeakEq(SynthT *synth, float x) {
+  float value = synth->peakEq.b0 * x +
+    synth->peakEq.b1 * synth->peakEq.x1 +
+    synth->peakEq.b2 * synth->peakEq.x2 +
+    synth->peakEq.a1 * synth->peakEq.y1 +
+    synth->peakEq.a2 * synth->peakEq.y2;
+
+  synth->peakEq.x2 = synth->peakEq.x1;
+  synth->peakEq.x1 = x;
+  synth->peakEq.y2 = synth->peakEq.y1;
+  synth->peakEq.y1 = value;
+
+  return value;
 }
 
 static float ADSR(SynthT *synth) {
@@ -249,14 +266,12 @@ static float SynthNextSample(size_t num) {
 
     v = synth->osc(t) * synth->volume;
     v *= synth->adsr.active ? ADSR(synth) : ASR(synth);
-    if(synth->lopass.active)
-    {
-		v=LowPassFilter(synth,v);
-	}
-	if(synth->peakEq.active)
-	{
-			v=PeakEq(synth,v);
-	}
+
+    if (synth->lowPass.active)
+      v = LowPassFilter(synth, v);
+
+    if (synth->peakEq.active)
+      v = PeakEq(synth, v);
 
     /* By adding the value of a LFO here we can do frequency modulation here. */
     synth->pt += synth->pitch;
